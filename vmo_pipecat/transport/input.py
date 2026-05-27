@@ -11,7 +11,6 @@ Patrón del VMO Engine original:
 
 from __future__ import annotations
 
-import asyncio
 from typing import Optional, TYPE_CHECKING
 
 try:
@@ -63,7 +62,6 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
         self._channels = channels
         self._conn_id: Optional[str] = None
         self._resample_state = None
-        self._audio_in_queue: asyncio.Queue = asyncio.Queue()
 
     def bind(self, conn_id: str) -> None:
         self._conn_id = conn_id
@@ -73,11 +71,6 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
         return self._conn_id
 
     async def push_audio(self, audio_bytes: bytes) -> None:
-        """Pasa PCM16 directamente a Deepgram (encoding=linear16, sample_rate=8000).
-
-        Con /c(slin) en el endpoint, Asterisk envia PCM16 8kHz.
-        Deepgram con linear16/8kHz procesa este formato nativamente sin μ-law.
-        """
         if not audio_bytes:
             return
 
@@ -85,6 +78,8 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
         _log = get_logger(__name__)
 
         self._push_audio_count = getattr(self, '_push_audio_count', 0) + 1
+
+        self._create_audio_task()
 
         frame = InputAudioRawFrame(
             audio=audio_bytes,
