@@ -57,7 +57,6 @@ def _identity(tenant_id: str = "acme") -> CallIdentity:
         call_id_sbc="sbc-obs",
         tenant_id=tenant_id,
         tenant_name=f"{tenant_id.title()} Corp",
-        node_id="ast-1",
         did="1000",
     )
 
@@ -83,12 +82,10 @@ def _session() -> SessionConfig:
     )
 
 
-def _mock_pool():
-    pool = MagicMock()
+def _mock_ari_client():
     client = MagicMock()
     client.hangup_channel = AsyncMock()
-    pool.client_for.return_value = client
-    return pool, client
+    return client
 
 
 @pytest.fixture
@@ -109,7 +106,7 @@ async def stack():
 
 
 def _make_controller(server, router, registry, event_bus, tenant_id="acme"):
-    pool, _ = _mock_pool()
+    client = _mock_ari_client()
     session = _session()
     identity = _identity(tenant_id=tenant_id)
     transport = AsteriskAudioSocketTransport(server, session.audio_profile)
@@ -117,7 +114,7 @@ def _make_controller(server, router, registry, event_bus, tenant_id="acme"):
         identity=identity,
         session_config=session,
         bridge_id="bridge-obs",
-        pool=pool,
+        ari_client=client,
         audiosocket=server,
         transport=transport,
         router=router,

@@ -36,17 +36,14 @@ def _tlv(msg_type: int, payload: bytes) -> bytes:
     return bytes([msg_type]) + struct.pack(">H", len(payload)) + payload
 
 
-def _mock_ari_pool():
-    pool = MagicMock()
+def _mock_ari_client():
     client = MagicMock()
     client.hangup_channel = AsyncMock()
     client.answer_channel = AsyncMock()
     client.create_bridge = AsyncMock(return_value="bridge-test")
     client.add_channel_to_bridge = AsyncMock()
     client.send_command = AsyncMock(return_value={"id": "new-channel"})
-    pool.client_for = MagicMock(return_value=client)
-    pool.is_any_connected = False
-    return pool, client
+    return client
 
 
 def _mock_session_config():
@@ -108,7 +105,7 @@ async def test_audio_echoes_back(stack):
     the real CallRouter + AudioSocketServer chain.
     """
     server, router, registry, event_bus = stack
-    pool, ari_client = _mock_ari_pool()
+    client = _mock_ari_client()
     session_config = _mock_session_config()
 
     audio_uuid = str(uuid.uuid4())
@@ -118,7 +115,6 @@ async def test_audio_echoes_back(stack):
         call_id_sbc="sbc-1",
         tenant_id="acme",
         tenant_name="Acme",
-        node_id="ast-1",
         did="1000",
     )
 
@@ -127,7 +123,7 @@ async def test_audio_echoes_back(stack):
         identity=identity,
         session_config=session_config,
         bridge_id="bridge-1",
-        pool=pool,
+        ari_client=client,
         audiosocket=server,
         transport=transport,
         router=router,
@@ -175,7 +171,7 @@ async def test_audio_echoes_back(stack):
 async def test_controller_shutdown_on_stasis_end(stack, capsys):
     """Shutdown emits vmo.call.ended with correct outcome."""
     server, router, registry, event_bus = stack
-    pool, _ = _mock_ari_pool()
+    client = _mock_ari_client()
     session_config = _mock_session_config()
 
     audio_uuid = str(uuid.uuid4())
@@ -185,7 +181,6 @@ async def test_controller_shutdown_on_stasis_end(stack, capsys):
         call_id_sbc="sbc-2",
         tenant_id="acme",
         tenant_name="Acme",
-        node_id="ast-1",
         did="1000",
     )
     transport = AsteriskAudioSocketTransport(server, session_config.audio_profile)
@@ -193,7 +188,7 @@ async def test_controller_shutdown_on_stasis_end(stack, capsys):
         identity=identity,
         session_config=session_config,
         bridge_id="bridge-2",
-        pool=pool,
+        ari_client=client,
         audiosocket=server,
         transport=transport,
         router=router,
@@ -225,7 +220,7 @@ async def test_controller_shutdown_on_stasis_end(stack, capsys):
 async def test_disconnect_triggers_shutdown(stack):
     """AudioSocket disconnect → controller.on_disconnect() → shutdown."""
     server, router, registry, event_bus = stack
-    pool, _ = _mock_ari_pool()
+    client = _mock_ari_client()
     session_config = _mock_session_config()
 
     audio_uuid = str(uuid.uuid4())
@@ -235,7 +230,6 @@ async def test_disconnect_triggers_shutdown(stack):
         call_id_sbc="sbc-3",
         tenant_id="acme",
         tenant_name="Acme",
-        node_id="ast-1",
         did="1000",
     )
     transport = AsteriskAudioSocketTransport(server, session_config.audio_profile)
@@ -243,7 +237,7 @@ async def test_disconnect_triggers_shutdown(stack):
         identity=identity,
         session_config=session_config,
         bridge_id="bridge-3",
-        pool=pool,
+        ari_client=client,
         audiosocket=server,
         transport=transport,
         router=router,
@@ -271,7 +265,7 @@ async def test_disconnect_triggers_shutdown(stack):
 async def test_idempotent_shutdown(stack):
     """Calling shutdown() twice must not crash."""
     server, router, registry, event_bus = stack
-    pool, _ = _mock_ari_pool()
+    client = _mock_ari_client()
     session_config = _mock_session_config()
 
     identity = CallIdentity(
@@ -280,7 +274,6 @@ async def test_idempotent_shutdown(stack):
         call_id_sbc="sbc-4",
         tenant_id="acme",
         tenant_name="Acme",
-        node_id="ast-1",
         did="1000",
     )
     transport = AsteriskAudioSocketTransport(server, session_config.audio_profile)
@@ -288,7 +281,7 @@ async def test_idempotent_shutdown(stack):
         identity=identity,
         session_config=session_config,
         bridge_id="bridge-4",
-        pool=pool,
+        ari_client=client,
         audiosocket=server,
         transport=transport,
         router=router,

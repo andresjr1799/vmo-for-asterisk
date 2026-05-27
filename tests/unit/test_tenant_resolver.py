@@ -186,7 +186,6 @@ def test_identity_passed_through(resolver):
         call_id_sbc="sbc-1",
         tenant_id="acme",
         tenant_name="Acme S.A.",
-        node_id="ast-1",
         did="1000",
     )
     sc = resolver.resolve("acme", "1000", identity=identity)

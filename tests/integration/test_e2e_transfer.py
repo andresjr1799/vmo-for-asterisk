@@ -34,20 +34,17 @@ def _identity(tenant_id: str = "acme", did: str = "1000") -> CallIdentity:
         call_id_sbc="sbc-1",
         tenant_id=tenant_id,
         tenant_name=f"{tenant_id.title()} Corp",
-        node_id="ast-1",
         did=did,
     )
 
 
-def _mock_pool(continue_result: bool = True):
-    pool = MagicMock()
+def _mock_client(continue_result: bool = True):
     client = MagicMock()
     client.continue_in_dialplan = AsyncMock(return_value=continue_result)
     client.hangup_channel = AsyncMock()
     client.play_media = AsyncMock()
     client.send_command = AsyncMock(return_value={"status": 204})
-    pool.client_for.return_value = client
-    return pool, client
+    return client
 
 
 def _get_counter_value(metric_name: str, **labels) -> float:
@@ -62,10 +59,10 @@ async def _noop_cb(r): pass
 
 @pytest.mark.asyncio
 async def test_transfer_calls_continue_in_dialplan(capsys):
-    pool, client = _mock_pool(continue_result=True)
+    client = _mock_client(continue_result=True)
     identity = _identity()
     bus = LoggingEventBus()
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", bus)
+    actions = AsteriskActions(client, identity, "from-vmo-transfer", bus)
 
     results = []
     async def cb(r): results.append(r)
@@ -87,10 +84,10 @@ async def test_transfer_calls_continue_in_dialplan(capsys):
 
 @pytest.mark.asyncio
 async def test_transfer_emits_requested_then_done_events(capsys):
-    pool, _ = _mock_pool(continue_result=True)
+    client = _mock_client(continue_result=True)
     identity = _identity()
     bus = LoggingEventBus()
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", bus)
+    actions = AsteriskActions(client, identity, "from-vmo-transfer", bus)
 
     await actions.transfer_call("transfer_call", "tc1", {"target": "9000"}, None, None, _noop_cb)
 
@@ -106,10 +103,10 @@ async def test_transfer_emits_requested_then_done_events(capsys):
 
 @pytest.mark.asyncio
 async def test_transfer_event_carries_target_and_reason(capsys):
-    pool, _ = _mock_pool(continue_result=True)
+    client = _mock_client(continue_result=True)
     identity = _identity()
     bus = LoggingEventBus()
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", bus)
+    actions = AsteriskActions(client, identity, "from-vmo-transfer", bus)
 
     await actions.transfer_call("transfer_call", "tc1",
                                 {"target": "9999", "reason": "billing"},
@@ -125,9 +122,9 @@ async def test_transfer_event_carries_target_and_reason(capsys):
 
 @pytest.mark.asyncio
 async def test_transfer_increments_prometheus_ok_counter():
-    pool, _ = _mock_pool(continue_result=True)
+    client = _mock_client(continue_result=True)
     identity = _identity(tenant_id="acme_metric")
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", LoggingEventBus())
+    actions = AsteriskActions(client, identity, "from-vmo-transfer", LoggingEventBus())
 
     before = _get_counter_value("vmo_transfer", tenant_id="acme_metric", result="ok")
     await actions.transfer_call("transfer_call", "tc1", {"target": "9000"}, None, None, _noop_cb)
@@ -140,10 +137,10 @@ async def test_transfer_increments_prometheus_ok_counter():
 
 @pytest.mark.asyncio
 async def test_transfer_ari_returns_false_emits_failed_event(capsys):
-    pool, _ = _mock_pool(continue_result=False)
+    client = _mock_client(continue_result=False)
     identity = _identity()
     bus = LoggingEventBus()
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", bus)
+    actions = AsteriskActions(client, identity, "from-vmo-transfer", bus)
 
     results = []
     async def cb(r): results.append(r)
@@ -160,13 +157,11 @@ async def test_transfer_ari_returns_false_emits_failed_event(capsys):
 
 @pytest.mark.asyncio
 async def test_transfer_ari_exception_emits_failed_and_records_metric(capsys):
-    pool = MagicMock()
     client = MagicMock()
     client.continue_in_dialplan = AsyncMock(side_effect=RuntimeError("ARI unreachable"))
-    pool.client_for.return_value = client
 
     identity = _identity(tenant_id="acme_err_metric")
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", LoggingEventBus())
+    actions = AsteriskActions(client, identity, "from-vmo-transfer", LoggingEventBus())
 
     before = _get_counter_value("vmo_transfer", tenant_id="acme_err_metric", result="failed")
     results = []
@@ -186,9 +181,9 @@ async def test_transfer_ari_exception_emits_failed_and_records_metric(capsys):
 
 @pytest.mark.asyncio
 async def test_transfer_idempotent_second_call_is_noop():
-    pool, client = _mock_pool(continue_result=True)
+    client = _mock_client(continue_result=True)
     identity = _identity()
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", LoggingEventBus())
+    actions = AsteriskActions(client, identity, "from-vmo-transfer", LoggingEventBus())
 
     results = []
     async def cb(r): results.append(r)
@@ -204,9 +199,9 @@ async def test_transfer_idempotent_second_call_is_noop():
 
 @pytest.mark.asyncio
 async def test_transfer_idempotent_no_duplicate_metric():
-    pool, _ = _mock_pool(continue_result=True)
+    client = _mock_client(continue_result=True)
     identity = _identity(tenant_id="acme_idem_metric")
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", LoggingEventBus())
+    actions = AsteriskActions(client, identity, "from-vmo-transfer", LoggingEventBus())
 
     before = _get_counter_value("vmo_transfer", tenant_id="acme_idem_metric", result="ok")
     await actions.transfer_call("transfer_call", "tc1", {"target": "9000"}, None, None, _noop_cb)
@@ -221,15 +216,15 @@ async def test_transfer_idempotent_no_duplicate_metric():
 
 @pytest.mark.asyncio
 async def test_transfer_different_tenants_have_separate_metric_labels():
-    pool_a, _ = _mock_pool()
-    pool_b, _ = _mock_pool()
+    client_a = _mock_client()
+    client_b = _mock_client()
 
     # Use unique tenant IDs to avoid interference with other test runs
     tid_a = f"acme_multitenant_{uuid.uuid4().hex[:6]}"
     tid_b = f"globex_multitenant_{uuid.uuid4().hex[:6]}"
 
-    actions_a = AsteriskActions(pool_a, _identity(tenant_id=tid_a), "from-vmo-transfer", LoggingEventBus())
-    actions_b = AsteriskActions(pool_b, _identity(tenant_id=tid_b), "from-vmo-transfer", LoggingEventBus())
+    actions_a = AsteriskActions(client_a, _identity(tenant_id=tid_a), "from-vmo-transfer", LoggingEventBus())
+    actions_b = AsteriskActions(client_b, _identity(tenant_id=tid_b), "from-vmo-transfer", LoggingEventBus())
 
     await actions_a.transfer_call("transfer_call", "tc1", {"target": "9000"}, None, None, _noop_cb)
     await actions_b.transfer_call("transfer_call", "tc1", {"target": "8000"}, None, None, _noop_cb)
@@ -242,10 +237,10 @@ async def test_transfer_different_tenants_have_separate_metric_labels():
 @pytest.mark.asyncio
 async def test_transfer_uses_session_context_not_default():
     """Transfer context comes from session_config.transfer.context, not a hard-coded value."""
-    pool, client = _mock_pool()
+    client = _mock_client()
     identity = _identity()
     custom_context = "custom-transfer-context"
-    actions = AsteriskActions(pool, identity, custom_context, LoggingEventBus())
+    actions = AsteriskActions(client, identity, custom_context, LoggingEventBus())
 
     await actions.transfer_call("transfer_call", "tc1", {"target": "9999"}, None, None, _noop_cb)
 

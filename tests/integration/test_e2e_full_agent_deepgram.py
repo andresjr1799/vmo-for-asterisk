@@ -80,12 +80,10 @@ def _dg_session(
     )
 
 
-def _mock_pool():
-    pool = MagicMock()
+def _mock_ari_client():
     client = MagicMock()
     client.hangup_channel = AsyncMock()
-    pool.client_for.return_value = client
-    return pool, client
+    return client
 
 
 @pytest.fixture
@@ -157,12 +155,12 @@ def test_full_agent_pipeline_structure():
     transport.input.return_value = "input_proc"
     transport.output.return_value = "output_proc"
 
-    pool = MagicMock()
+    ari_client = MagicMock()
     identity = CallIdentity(
         vmo_call_id="c1", asterisk_channel_id="ch-1", call_id_sbc="s1",
-        tenant_id="acme", tenant_name="Acme", node_id="ast-1", did="1000",
+        tenant_id="acme", tenant_name="Acme", did="1000",
     )
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", LoggingEventBus())
+    actions = AsteriskActions(ari_client, identity, "from-vmo-transfer", LoggingEventBus())
     runner, task = build_full_agent_pipeline(session, transport, actions)
 
     # Pipeline should have exactly 3 processors: input, agent, output
@@ -192,12 +190,12 @@ def test_full_agent_tools_registered_on_agent():
     orig = _reg.PROVIDER_BUILDERS.get("deepgram_voice_agent")
     _reg.PROVIDER_BUILDERS["deepgram_voice_agent"] = lambda r, p, **kw: TrackingAgent()
     try:
-        pool = MagicMock()
+        ari_client = MagicMock()
         identity = CallIdentity(
             vmo_call_id="c2", asterisk_channel_id="ch-2", call_id_sbc="s2",
-            tenant_id="acme", tenant_name="Acme", node_id="ast-1", did="1000",
+            tenant_id="acme", tenant_name="Acme", did="1000",
         )
-        actions = AsteriskActions(pool, identity, "from-vmo-transfer", LoggingEventBus())
+        actions = AsteriskActions(ari_client, identity, "from-vmo-transfer", LoggingEventBus())
         build_full_agent_pipeline(session, transport, actions)
     finally:
         if orig:
@@ -214,7 +212,7 @@ def test_full_agent_tools_registered_on_agent():
 async def test_full_agent_call_lifecycle(stack, capsys):
     """Full call: build DG Voice Agent pipeline, connect, then hangup."""
     server, router, registry, event_bus = stack
-    pool, ari_client = _mock_pool()
+    client = _mock_ari_client()
     session = _dg_session(prompt="Agent prompt", greeting="Hola!")
 
     audio_uuid = str(uuid.uuid4())
@@ -224,7 +222,6 @@ async def test_full_agent_call_lifecycle(stack, capsys):
         call_id_sbc="sbc-dg-1",
         tenant_id="acme",
         tenant_name="Acme",
-        node_id="ast-1",
         did="1001",
     )
     transport = AsteriskAudioSocketTransport(server, session.audio_profile)
@@ -232,7 +229,7 @@ async def test_full_agent_call_lifecycle(stack, capsys):
         identity=identity,
         session_config=session,
         bridge_id="bridge-dg",
-        pool=pool,
+        ari_client=client,
         audiosocket=server,
         transport=transport,
         router=router,
@@ -278,7 +275,7 @@ async def test_full_agent_call_lifecycle(stack, capsys):
 async def test_full_agent_pipeline_emit_vmo_call_pipeline_started(stack, capsys):
     """vmo.call.pipeline.started must carry pipeline_kind=full_agent."""
     server, router, registry, event_bus = stack
-    pool, _ = _mock_pool()
+    client = _mock_ari_client()
     session = _dg_session()
 
     audio_uuid = str(uuid.uuid4())
@@ -288,7 +285,6 @@ async def test_full_agent_pipeline_emit_vmo_call_pipeline_started(stack, capsys)
         call_id_sbc="sbc-dg-2",
         tenant_id="acme",
         tenant_name="Acme",
-        node_id="ast-1",
         did="1001",
     )
     transport = AsteriskAudioSocketTransport(server, session.audio_profile)
@@ -296,7 +292,7 @@ async def test_full_agent_pipeline_emit_vmo_call_pipeline_started(stack, capsys)
         identity=identity,
         session_config=session,
         bridge_id="bridge-dg2",
-        pool=pool,
+        ari_client=client,
         audiosocket=server,
         transport=transport,
         router=router,

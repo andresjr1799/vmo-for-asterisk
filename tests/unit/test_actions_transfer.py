@@ -1,7 +1,7 @@
 """
 Unit tests for AsteriskActions — all four LLM tool callbacks (Phase 7).
 
-Tests are pure unit tests (mock ARIPool, no TCP, no PipeCat required).
+Tests are pure unit tests (mock ARI client, no TCP, no PipeCat required).
 Verifies for each tool:
   • Correct ARI method is called with the right arguments
   • EventBus emits the canonical event
@@ -31,35 +31,32 @@ def _identity(tenant_id: str = "acme") -> CallIdentity:
         call_id_sbc="sbc-test",
         tenant_id=tenant_id,
         tenant_name=tenant_id.title(),
-        node_id="ast-1",
         did="1000",
     )
 
 
-def _pool(
+def _client(
     continue_result=True,
     hangup_ok=True,
     play_ok=True,
     dtmf_ok=True,
-) -> tuple:
-    pool = MagicMock()
+) -> MagicMock:
     client = MagicMock()
     client.continue_in_dialplan = AsyncMock(return_value=continue_result)
     client.hangup_channel = AsyncMock(return_value=None if hangup_ok else None)
     client.play_media = AsyncMock(return_value={"id": "pb-1"})
     client.send_command = AsyncMock(return_value={"status": 204})
-    pool.client_for.return_value = client
-    return pool, client
+    return client
 
 
-def _actions(pool=None, identity=None, bus=None) -> AsteriskActions:
-    if pool is None:
-        pool, _ = _pool()
+def _actions(ari_client=None, identity=None, bus=None) -> AsteriskActions:
+    if ari_client is None:
+        ari_client = _client()
     if identity is None:
         identity = _identity()
     if bus is None:
         bus = LoggingEventBus()
-    return AsteriskActions(pool, identity, "from-vmo-transfer", bus)
+    return AsteriskActions(ari_client, identity, "from-vmo-transfer", bus)
 
 
 def _metric_value(counter, **labels) -> float:
@@ -91,9 +88,9 @@ class TestHangupCall:
 
     @pytest.mark.asyncio
     async def test_calls_ari_hangup_channel(self):
-        pool, client = _pool()
+        client = _client()
         identity = _identity()
-        actions = _actions(pool, identity)
+        actions = _actions(client, identity)
 
         await actions.hangup_call("hangup_call", "tc1", {}, None, None, _noop_cb)
 
@@ -125,8 +122,8 @@ class TestHangupCall:
     @pytest.mark.asyncio
     async def test_records_ok_metric(self):
         tid = f"hangup_ok_{uuid.uuid4().hex[:6]}"
-        pool, _ = _pool()
-        actions = _actions(pool, _identity(tenant_id=tid))
+        client = _client()
+        actions = _actions(client, _identity(tenant_id=tid))
 
         before = _metric_value(vmo_tool_call_total, tenant_id=tid, tool_name="hangup_call", result="ok")
         await actions.hangup_call("hangup_call", "tc1", {}, None, None, _noop_cb)
@@ -136,15 +133,13 @@ class TestHangupCall:
 
     @pytest.mark.asyncio
     async def test_ari_exception_returns_error(self):
-        pool = MagicMock()
         client = MagicMock()
         client.hangup_channel = AsyncMock(side_effect=RuntimeError("ARI error"))
-        pool.client_for.return_value = client
 
         results = []
         async def cb(r): results.append(r)
 
-        actions = _actions(pool)
+        actions = _actions(client)
         await actions.hangup_call("hangup_call", "tc1", {}, None, None, cb)
 
         assert results[0]["status"] == "error"
@@ -153,31 +148,16 @@ class TestHangupCall:
     @pytest.mark.asyncio
     async def test_ari_exception_records_error_metric(self):
         tid = f"hangup_err_{uuid.uuid4().hex[:6]}"
-        pool = MagicMock()
         client = MagicMock()
         client.hangup_channel = AsyncMock(side_effect=RuntimeError("fail"))
-        pool.client_for.return_value = client
 
         before = _metric_value(vmo_tool_call_total, tenant_id=tid, tool_name="hangup_call", result="error")
-        await _actions(pool, _identity(tid)).hangup_call(
+        await _actions(client, _identity(tid)).hangup_call(
             "hangup_call", "tc1", {}, None, None, _noop_cb
         )
         after = _metric_value(vmo_tool_call_total, tenant_id=tid, tool_name="hangup_call", result="error")
 
         pass  # Metric now recorded via OTel (verified by event bus)
-
-    @pytest.mark.asyncio
-    async def test_uses_correct_node_client(self):
-        pool = MagicMock()
-        client = MagicMock()
-        client.hangup_channel = AsyncMock()
-        pool.client_for.return_value = client
-
-        identity = _identity()
-        actions = _actions(pool, identity)
-        await actions.hangup_call("hangup_call", "tc1", {}, None, None, _noop_cb)
-
-        pool.client_for.assert_called_with("ast-1")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -188,9 +168,9 @@ class TestPlayAudioFile:
 
     @pytest.mark.asyncio
     async def test_calls_ari_play_media_with_uri(self):
-        pool, client = _pool()
+        client = _client()
         identity = _identity()
-        actions = _actions(pool, identity)
+        actions = _actions(client, identity)
 
         await actions.play_audio_file("play_audio_file", "tc1",
                                       {"uri": "sound:welcome"}, None, None, _noop_cb)
@@ -211,11 +191,11 @@ class TestPlayAudioFile:
 
     @pytest.mark.asyncio
     async def test_missing_uri_returns_error_without_ari_call(self):
-        pool, client = _pool()
+        client = _client()
         results = []
         async def cb(r): results.append(r)
 
-        actions = _actions(pool)
+        actions = _actions(client)
         await actions.play_audio_file("play_audio_file", "tc1", {}, None, None, cb)
 
         assert results[0]["status"] == "error"
@@ -226,8 +206,8 @@ class TestPlayAudioFile:
     async def test_uri_formats(self):
         """Various Asterisk media URI formats must be passed through unchanged."""
         for uri in ["sound:welcome", "recording:intro", "file:/path/to/file.wav"]:
-            pool, client = _pool()
-            actions = _actions(pool)
+            client = _client()
+            actions = _actions(client)
             await actions.play_audio_file("play_audio_file", "tc1",
                                           {"uri": uri}, None, None, _noop_cb)
             client.play_media.assert_awaited_with("SIP/trunk-test", uri)
@@ -250,8 +230,8 @@ class TestPlayAudioFile:
     @pytest.mark.asyncio
     async def test_records_ok_metric(self):
         tid = f"play_ok_{uuid.uuid4().hex[:6]}"
-        pool, _ = _pool()
-        actions = _actions(pool, _identity(tenant_id=tid))
+        client = _client()
+        actions = _actions(client, _identity(tenant_id=tid))
 
         before = _metric_value(vmo_tool_call_total, tenant_id=tid, tool_name="play_audio_file", result="ok")
         await actions.play_audio_file("play_audio_file", "tc1",
@@ -262,15 +242,13 @@ class TestPlayAudioFile:
 
     @pytest.mark.asyncio
     async def test_ari_exception_returns_error(self):
-        pool = MagicMock()
         client = MagicMock()
         client.play_media = AsyncMock(side_effect=RuntimeError("playback error"))
-        pool.client_for.return_value = client
 
         results = []
         async def cb(r): results.append(r)
 
-        actions = _actions(pool)
+        actions = _actions(client)
         await actions.play_audio_file("play_audio_file", "tc1",
                                       {"uri": "sound:welcome"}, None, None, cb)
 
@@ -279,13 +257,11 @@ class TestPlayAudioFile:
     @pytest.mark.asyncio
     async def test_ari_exception_records_error_metric(self):
         tid = f"play_err_{uuid.uuid4().hex[:6]}"
-        pool = MagicMock()
         client = MagicMock()
         client.play_media = AsyncMock(side_effect=RuntimeError("fail"))
-        pool.client_for.return_value = client
 
         before = _metric_value(vmo_tool_call_total, tenant_id=tid, tool_name="play_audio_file", result="error")
-        await _actions(pool, _identity(tid)).play_audio_file(
+        await _actions(client, _identity(tid)).play_audio_file(
             "play_audio_file", "tc1", {"uri": "sound:x"}, None, None, _noop_cb
         )
         after = _metric_value(vmo_tool_call_total, tenant_id=tid, tool_name="play_audio_file", result="error")
@@ -301,9 +277,9 @@ class TestSendDtmf:
 
     @pytest.mark.asyncio
     async def test_calls_ari_send_command_with_digits(self):
-        pool, client = _pool()
+        client = _client()
         identity = _identity()
-        actions = _actions(pool, identity)
+        actions = _actions(client, identity)
 
         await actions.send_dtmf("send_dtmf", "tc1",
                                 {"digits": "123"}, None, None, _noop_cb)
@@ -328,11 +304,11 @@ class TestSendDtmf:
 
     @pytest.mark.asyncio
     async def test_missing_digits_returns_error_without_ari_call(self):
-        pool, client = _pool()
+        client = _client()
         results = []
         async def cb(r): results.append(r)
 
-        actions = _actions(pool)
+        actions = _actions(client)
         await actions.send_dtmf("send_dtmf", "tc1", {}, None, None, cb)
 
         assert results[0]["status"] == "error"
@@ -341,8 +317,8 @@ class TestSendDtmf:
 
     @pytest.mark.asyncio
     async def test_multi_digit_string_passed_intact(self):
-        pool, client = _pool()
-        actions = _actions(pool)
+        client = _client()
+        actions = _actions(client)
 
         await actions.send_dtmf("send_dtmf", "tc1",
                                 {"digits": "1234#"}, None, None, _noop_cb)
@@ -352,8 +328,8 @@ class TestSendDtmf:
 
     @pytest.mark.asyncio
     async def test_star_digit(self):
-        pool, client = _pool()
-        actions = _actions(pool)
+        client = _client()
+        actions = _actions(client)
 
         await actions.send_dtmf("send_dtmf", "tc1",
                                 {"digits": "*"}, None, None, _noop_cb)
@@ -379,8 +355,8 @@ class TestSendDtmf:
     @pytest.mark.asyncio
     async def test_records_ok_metric(self):
         tid = f"dtmf_ok_{uuid.uuid4().hex[:6]}"
-        pool, _ = _pool()
-        actions = _actions(pool, _identity(tenant_id=tid))
+        client = _client()
+        actions = _actions(client, _identity(tenant_id=tid))
 
         before = _metric_value(vmo_tool_call_total, tenant_id=tid, tool_name="send_dtmf", result="ok")
         await actions.send_dtmf("send_dtmf", "tc1",
@@ -391,15 +367,13 @@ class TestSendDtmf:
 
     @pytest.mark.asyncio
     async def test_ari_exception_returns_error(self):
-        pool = MagicMock()
         client = MagicMock()
         client.send_command = AsyncMock(side_effect=RuntimeError("dtmf error"))
-        pool.client_for.return_value = client
 
         results = []
         async def cb(r): results.append(r)
 
-        actions = _actions(pool)
+        actions = _actions(client)
         await actions.send_dtmf("send_dtmf", "tc1",
                                 {"digits": "9"}, None, None, cb)
 
@@ -408,13 +382,11 @@ class TestSendDtmf:
     @pytest.mark.asyncio
     async def test_ari_exception_records_error_metric(self):
         tid = f"dtmf_err_{uuid.uuid4().hex[:6]}"
-        pool = MagicMock()
         client = MagicMock()
         client.send_command = AsyncMock(side_effect=RuntimeError("fail"))
-        pool.client_for.return_value = client
 
         before = _metric_value(vmo_tool_call_total, tenant_id=tid, tool_name="send_dtmf", result="error")
-        await _actions(pool, _identity(tid)).send_dtmf(
+        await _actions(client, _identity(tid)).send_dtmf(
             "send_dtmf", "tc1", {"digits": "1"}, None, None, _noop_cb
         )
         after = _metric_value(vmo_tool_call_total, tenant_id=tid, tool_name="send_dtmf", result="error")
@@ -424,17 +396,15 @@ class TestSendDtmf:
     @pytest.mark.asyncio
     async def test_uses_correct_channel_id_in_url(self):
         """ARI URL must use asterisk_channel_id from identity."""
-        pool = MagicMock()
         client = MagicMock()
         client.send_command = AsyncMock(return_value={"status": 204})
-        pool.client_for.return_value = client
 
         identity = CallIdentity(
             vmo_call_id="c1", asterisk_channel_id="custom-channel-id",
             call_id_sbc="sbc", tenant_id="acme", tenant_name="Acme",
-            node_id="ast-1", did="1000",
+            did="1000",
         )
-        actions = AsteriskActions(pool, identity, "from-vmo-transfer", LoggingEventBus())
+        actions = AsteriskActions(client, identity, "from-vmo-transfer", LoggingEventBus())
         await actions.send_dtmf("send_dtmf", "tc1", {"digits": "0"}, None, None, _noop_cb)
 
         call_args = client.send_command.await_args
@@ -448,29 +418,12 @@ class TestSendDtmf:
 class TestCrossToolBehaviour:
 
     @pytest.mark.asyncio
-    async def test_all_tools_use_pool_client_for_node_id(self):
-        """All tools must route ARI calls via pool.client_for(node_id)."""
-        pool, client = _pool()
-        identity = _identity()
-        actions = _actions(pool, identity)
-
-        await actions.hangup_call("hangup_call", "tc1", {}, None, None, _noop_cb)
-        await actions.play_audio_file("play_audio_file", "tc2",
-                                      {"uri": "sound:x"}, None, None, _noop_cb)
-        await actions.send_dtmf("send_dtmf", "tc3", {"digits": "1"}, None, None, _noop_cb)
-
-        # Each call should have used client_for("ast-1")
-        assert pool.client_for.call_count >= 3
-        for call in pool.client_for.call_args_list:
-            assert call.args[0] == "ast-1"
-
-    @pytest.mark.asyncio
     async def test_identity_present_in_all_emitted_events(self, capsys):
         """Every tool_call event must carry the full call identity."""
         bus = LoggingEventBus()
         identity = _identity(tenant_id="event_check")
-        pool, _ = _pool()
-        actions = AsteriskActions(pool, identity, "from-vmo-transfer", bus)
+        client = _client()
+        actions = AsteriskActions(client, identity, "from-vmo-transfer", bus)
 
         await actions.hangup_call("hangup_call", "tc1", {}, None, None, _noop_cb)
         await actions.play_audio_file("play_audio_file", "tc2",

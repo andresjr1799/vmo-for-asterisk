@@ -287,20 +287,18 @@ async def test_transfer_call_invokes_continue_in_dialplan():
     from vmo_pipecat.call.identity import CallIdentity
     from vmo_pipecat.events.bus import LoggingEventBus
 
-    pool = MagicMock()
     ari_client = MagicMock()
     ari_client.continue_in_dialplan = AsyncMock(return_value=True)
-    pool.client_for.return_value = ari_client
 
     identity = CallIdentity(
         vmo_call_id="c1", asterisk_channel_id="ch-1", call_id_sbc="sbc-1",
-        tenant_id="acme", tenant_name="Acme", node_id="ast-1", did="1000",
+        tenant_id="acme", tenant_name="Acme", did="1000",
     )
 
     result_holder = []
     async def _cb(r): result_holder.append(r)
 
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", LoggingEventBus())
+    actions = AsteriskActions(ari_client, identity, "from-vmo-transfer", LoggingEventBus())
     await actions.transfer_call("transfer_call", "tc1", {"target": "9000"}, None, None, _cb)
 
     ari_client.continue_in_dialplan.assert_awaited_once_with(
@@ -315,20 +313,18 @@ async def test_transfer_call_idempotent():
     from vmo_pipecat.call.identity import CallIdentity
     from vmo_pipecat.events.bus import LoggingEventBus
 
-    pool = MagicMock()
     ari_client = MagicMock()
     ari_client.continue_in_dialplan = AsyncMock(return_value=True)
-    pool.client_for.return_value = ari_client
 
     identity = CallIdentity(
         vmo_call_id="c2", asterisk_channel_id="ch-2", call_id_sbc="sbc-2",
-        tenant_id="acme", tenant_name="Acme", node_id="ast-1", did="1000",
+        tenant_id="acme", tenant_name="Acme", did="1000",
     )
     called = []
 
     async def cb(r): called.append(r)
 
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", LoggingEventBus())
+    actions = AsteriskActions(ari_client, identity, "from-vmo-transfer", LoggingEventBus())
     await actions.transfer_call("transfer_call", "tc1", {"target": "9000"}, None, None, cb)
     await actions.transfer_call("transfer_call", "tc2", {"target": "9000"}, None, None, cb)
 

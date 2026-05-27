@@ -50,12 +50,10 @@ def _session() -> SessionConfig:
     )
 
 
-def _mock_pool():
-    pool = MagicMock()
+def _mock_ari_client():
     client = MagicMock()
     client.hangup_channel = AsyncMock()
-    pool.client_for.return_value = client
-    return pool, client
+    return client
 
 
 @pytest.fixture
@@ -76,7 +74,7 @@ async def stack():
 
 
 def _make_controller(server, router, registry, event_bus):
-    pool, _ = _mock_pool()
+    client = _mock_ari_client()
     session = _session()
     identity = CallIdentity(
         vmo_call_id=str(uuid.uuid4()),
@@ -84,7 +82,6 @@ def _make_controller(server, router, registry, event_bus):
         call_id_sbc="sbc-drain",
         tenant_id="acme",
         tenant_name="Acme",
-        node_id="ast-1",
         did="1000",
     )
     transport = AsteriskAudioSocketTransport(server, session.audio_profile)
@@ -92,7 +89,7 @@ def _make_controller(server, router, registry, event_bus):
         identity=identity,
         session_config=session,
         bridge_id="bridge-drain",
-        pool=pool,
+        ari_client=client,
         audiosocket=server,
         transport=transport,
         router=router,
@@ -207,7 +204,7 @@ async def test_instrumented_ari_client_increments_reconnect_metric():
     client._should_reconnect = True
     client._reconnect_attempt = 0
 
-    before = _get_counter_value(vmo_ari_reconnect_total, node_id=node_id)
+    before = _get_counter_value(vmo_ari_reconnect_total)
 
     # Simulate _mark_disconnected_and_backoff returning True (→ will reconnect)
     # We patch the parent's method to return True immediately
@@ -222,7 +219,7 @@ async def test_instrumented_ari_client_increments_reconnect_metric():
     ):
         result = await client._mark_disconnected_and_backoff("test")
 
-    after = _get_counter_value(vmo_ari_reconnect_total, node_id=node_id)
+    after = _get_counter_value(vmo_ari_reconnect_total)
     assert result is True
     pass  # Metric now recorded via OTel
 
@@ -239,7 +236,7 @@ async def test_instrumented_ari_client_no_metric_when_shutdown():
         node_id=node_id,
     )
 
-    before = _get_counter_value(vmo_ari_reconnect_total, node_id=node_id)
+    before = _get_counter_value(vmo_ari_reconnect_total)
 
     async def _mock_parent_mark(*args, **kwargs):
         return False  # shutdown requested
@@ -252,6 +249,6 @@ async def test_instrumented_ari_client_no_metric_when_shutdown():
     ):
         result = await client._mark_disconnected_and_backoff("shutdown")
 
-    after = _get_counter_value(vmo_ari_reconnect_total, node_id=node_id)
+    after = _get_counter_value(vmo_ari_reconnect_total)
     assert result is False
     pass  # Metric now recorded via OTel

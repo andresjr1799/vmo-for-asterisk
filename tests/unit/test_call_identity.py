@@ -11,7 +11,6 @@ def _make() -> CallIdentity:
         call_id_sbc="sbc-xyz",
         tenant_id="acme",
         tenant_name="Acme S.A.",
-        node_id="ast-1",
         did="1000",
     )
 
@@ -30,10 +29,9 @@ def test_asdict_contains_all_keys():
     assert d["call_id_sbc"] == "sbc-xyz"
     assert d["tenant_id"] == "acme"
     assert d["tenant_name"] == "Acme S.A."
-    assert d["node_id"] == "ast-1"
     assert d["did"] == "1000"
     assert d["caller_id"] == ""
-    assert len(d) == 8
+    assert len(d) == 7
 
 
 def test_equality():

@@ -73,12 +73,10 @@ def _el_session(
     )
 
 
-def _mock_pool():
-    pool = MagicMock()
+def _mock_ari_client():
     client = MagicMock()
     client.hangup_channel = AsyncMock()
-    pool.client_for.return_value = client
-    return pool, client
+    return client
 
 
 @pytest.fixture
@@ -165,12 +163,12 @@ def test_elevenlabs_full_agent_pipeline_structure():
     transport.input.return_value = "in"
     transport.output.return_value = "out"
 
-    pool = MagicMock()
+    ari_client = MagicMock()
     identity = CallIdentity(
         vmo_call_id="c3", asterisk_channel_id="ch-3", call_id_sbc="s3",
-        tenant_id="globex", tenant_name="Globex", node_id="ast-1", did="default",
+        tenant_id="globex", tenant_name="Globex", did="default",
     )
-    actions = AsteriskActions(pool, identity, "from-vmo-transfer", LoggingEventBus())
+    actions = AsteriskActions(ari_client, identity, "from-vmo-transfer", LoggingEventBus())
     _, task = build_full_agent_pipeline(session, transport, actions)
 
     # [input, agent, output] — no VAD
@@ -198,12 +196,12 @@ def test_elevenlabs_tools_registered():
     orig = _reg.PROVIDER_BUILDERS.get("elevenlabs_conv")
     _reg.PROVIDER_BUILDERS["elevenlabs_conv"] = lambda r, p, **kw: TrackingAgent()
     try:
-        pool = MagicMock()
+        ari_client = MagicMock()
         identity = CallIdentity(
             vmo_call_id="c4", asterisk_channel_id="ch-4", call_id_sbc="s4",
-            tenant_id="globex", tenant_name="Globex", node_id="ast-1", did="default",
+            tenant_id="globex", tenant_name="Globex", did="default",
         )
-        actions = AsteriskActions(pool, identity, "from-vmo-transfer", LoggingEventBus())
+        actions = AsteriskActions(ari_client, identity, "from-vmo-transfer", LoggingEventBus())
         build_full_agent_pipeline(session, transport, actions)
     finally:
         if orig:
@@ -219,7 +217,7 @@ def test_elevenlabs_tools_registered():
 @pytest.mark.asyncio
 async def test_elevenlabs_full_call_lifecycle(stack, capsys):
     server, router, registry, event_bus = stack
-    pool, _ = _mock_pool()
+    client = _mock_ari_client()
     session = _el_session(prompt="Eres Globex assistant.", greeting="¡Hola Globex!")
 
     audio_uuid = str(uuid.uuid4())
@@ -229,7 +227,6 @@ async def test_elevenlabs_full_call_lifecycle(stack, capsys):
         call_id_sbc="sbc-el-1",
         tenant_id="globex",
         tenant_name="Globex Corp",
-        node_id="ast-1",
         did="default",
     )
     transport = AsteriskAudioSocketTransport(server, session.audio_profile)
@@ -237,7 +234,7 @@ async def test_elevenlabs_full_call_lifecycle(stack, capsys):
         identity=identity,
         session_config=session,
         bridge_id="bridge-el",
-        pool=pool,
+        ari_client=client,
         audiosocket=server,
         transport=transport,
         router=router,

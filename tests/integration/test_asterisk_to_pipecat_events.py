@@ -55,7 +55,6 @@ def _identity(channel_id: str = "SIP/trunk-test") -> CallIdentity:
         call_id_sbc="sbc-1",
         tenant_id="acme",
         tenant_name="Acme",
-        node_id="ast-1",
         did="1000",
     )
 
@@ -81,12 +80,10 @@ def _modular_session(vad: str = "silero") -> SessionConfig:
     )
 
 
-def _mock_pool():
-    pool = MagicMock()
+def _mock_ari_client():
     client = MagicMock()
     client.hangup_channel = AsyncMock()
-    pool.client_for.return_value = client
-    return pool, client
+    return client
 
 
 @pytest.fixture
@@ -107,7 +104,7 @@ async def stack():
 
 
 def _make_controller(server, router, registry, event_bus, session=None, channel_id=None):
-    pool, _ = _mock_pool()
+    client = _mock_ari_client()
     session = session or _modular_session()
     identity = _identity(channel_id or "SIP/trunk-test")
     transport = AsteriskAudioSocketTransport(server, session.audio_profile)
@@ -115,7 +112,7 @@ def _make_controller(server, router, registry, event_bus, session=None, channel_
         identity=identity,
         session_config=session,
         bridge_id="bridge-1",
-        pool=pool,
+        ari_client=client,
         audiosocket=server,
         transport=transport,
         router=router,
@@ -190,7 +187,7 @@ class TestDtmfFrameInjection:
         from vmo_pipecat.ari.events import CHANNEL_DTMF_RECEIVED
 
         server, router, registry, event_bus = stack
-        pool, _ = _mock_pool()
+        client = _mock_ari_client()
         session = _modular_session()
         channel_id = "SIP/lifecycle-dtmf"
         ctrl = _make_controller(server, router, registry, event_bus, session, channel_id)
@@ -207,7 +204,7 @@ class TestDtmfFrameInjection:
         # Build minimal lifecycle and call the handler directly
         resolver = MagicMock()
         lifecycle = CallLifecycle(
-            pool=pool, audiosocket=server, router=router, registry=registry,
+            ari_client=client, audiosocket=server, router=router, registry=registry,
             resolver=resolver, event_bus=event_bus,
         )
 
@@ -215,7 +212,6 @@ class TestDtmfFrameInjection:
             "type": CHANNEL_DTMF_RECEIVED,
             "channel": {"id": channel_id, "name": "SIP/trunk", "channelvars": {}},
             "digit": "9",
-            "_vmo_node_id": "ast-1",
         }
         await lifecycle._on_dtmf_received(ari_event)
 
@@ -334,7 +330,7 @@ class TestChannelTalkingFrames:
         from vmo_pipecat.call.lifecycle import CallLifecycle
 
         server, router, registry, event_bus = stack
-        pool, _ = _mock_pool()
+        client = _mock_ari_client()
         session = _modular_session(vad="asterisk_talk_detect")
         channel_id = "SIP/talking-test"
         ctrl = _make_controller(server, router, registry, event_bus, session, channel_id)
@@ -349,12 +345,11 @@ class TestChannelTalkingFrames:
         router.register_by_channel(channel_id, ctrl)
 
         lifecycle = CallLifecycle(
-            pool=pool, audiosocket=server, router=router, registry=registry,
+            ari_client=client, audiosocket=server, router=router, registry=registry,
             resolver=MagicMock(), event_bus=event_bus,
         )
         ari_event = {
             "channel": {"id": channel_id, "name": "SIP/trunk", "channelvars": {}},
-            "_vmo_node_id": "ast-1",
         }
         await lifecycle._on_channel_talking_started(ari_event)
 
@@ -371,7 +366,7 @@ class TestDefensiveHangup:
     async def test_stasis_end_cancels_pipeline_within_200ms(self, stack):
         """StasisEnd while pipeline is running must cancel it in < 200 ms."""
         server, router, registry, event_bus = stack
-        pool, _ = _mock_pool()
+        client = _mock_ari_client()
         session = _modular_session()
         ctrl = _make_controller(server, router, registry, event_bus, session)
 

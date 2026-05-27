@@ -81,7 +81,6 @@ def _identity() -> CallIdentity:
         call_id_sbc="sbc-bus",
         tenant_id="acme",
         tenant_name="Acme Corp",
-        node_id="ast-1",
         did="2000",
     )
 

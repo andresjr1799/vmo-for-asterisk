@@ -46,8 +46,8 @@ def _mock_state(
     audiosocket = MagicMock()
     audiosocket.is_bound = as_bound
 
-    pool = MagicMock()
-    pool.configure_mock(**{"is_any_connected": ari_connected})
+    ari_client = MagicMock()
+    ari_client.configure_mock(**{"is_connected": ari_connected})
 
     event_bus = MagicMock()
     event_bus.emit = AsyncMock()
@@ -58,7 +58,7 @@ def _mock_state(
         config_store=config_store,
         registry=registry,
         audiosocket=audiosocket,
-        pool=pool,
+        ari_client=ari_client,
         event_bus=event_bus,
         admin_token=admin_token,
         reload_fn=reload_fn,

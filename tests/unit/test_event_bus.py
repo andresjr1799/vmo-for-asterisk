@@ -16,7 +16,6 @@ def _identity() -> CallIdentity:
         call_id_sbc="sbc-1",
         tenant_id="acme",
         tenant_name="Acme S.A.",
-        node_id="ast-1",
         did="1000",
     )
 
@@ -73,5 +72,5 @@ async def test_logging_bus_all_identity_keys_present(capsys):
     data = json.loads(captured[len("EVENT "):])
 
     for key in ("vmo_call_id", "asterisk_channel_id", "call_id_sbc",
-                "tenant_id", "tenant_name", "node_id", "did"):
+                "tenant_id", "tenant_name", "did"):
         assert key in data, f"Missing key: {key}"
