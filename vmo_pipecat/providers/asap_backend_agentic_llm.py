@@ -132,16 +132,26 @@ class ASAPBackendAgenticLLM(FrameProcessor):
 
         async with httpx.AsyncClient(timeout=float(self._timeout)) as client:
             async with client.stream("POST", self._url, json=payload, headers=headers) as response:
+                logger.debug("ASAP LLM response status", status=response.status_code)
+                line_count = 0
                 async for line in response.aiter_lines():
+                    line_count += 1
                     if not line or not line.startswith("data: "):
+                        if line:
+                            logger.debug("ASAP LLM non-SSE line", line=line[:200])
                         continue
                     try:
                         data = json.loads(line.removeprefix("data: "))
                     except json.JSONDecodeError:
+                        logger.debug("ASAP LLM JSON decode failed", raw=line[:200])
                         continue
-                    if data.get("type") == "delta":
+                    event_type = data.get("type", "")
+                    logger.debug("ASAP LLM event", type=event_type, keys=list(data.keys()))
+                    if event_type == "delta":
                         content = data.get("content", "")
                         if content:
                             await self.push_frame(TextFrame(content))
-                    elif data.get("type") == "done":
+                    elif event_type == "done":
+                        logger.debug("ASAP LLM stream done")
                         return
+                logger.debug("ASAP LLM stream ended", lines_received=line_count)
