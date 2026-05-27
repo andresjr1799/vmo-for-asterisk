@@ -22,19 +22,14 @@ except ImportError:
         def __init__(self, **kw): self._kw = kw
         def link(self, n): pass
 
-try:
-    from pipecat.utils.text.xml_function_tag_filter import XMLFunctionTagFilter
-except ImportError:
-    XMLFunctionTagFilter = None
-
 
 def build_service(resolved: "ElevenLabsProviderCfg", audio_profile: "AudioProfileCfg") -> Any:
     params = dict(resolved.params)
     voice_id = params.pop("voice_id", "")
     model = params.pop("model_id", None) or params.pop("model", "eleven_multilingual_v2")
     speed = params.pop("speed", None)
-    stability = params.pop("stability", 0.8)
-    similarity_boost = params.pop("similarity_boost", 0.75)
+    stability = params.pop("stability", None)
+    similarity_boost = params.pop("similarity_boost", None)
 
     settings_kwargs: dict[str, Any] = {"voice": voice_id, "model": model}
     if speed is not None:
@@ -46,9 +41,7 @@ def build_service(resolved: "ElevenLabsProviderCfg", audio_profile: "AudioProfil
 
     return ElevenLabsTTSService(
         api_key=resolved.api_key,
-        reconnect_on_error=False,
         sample_rate=audio_profile.out_rate,
-        text_filters=[XMLFunctionTagFilter()] if XMLFunctionTagFilter else [],
-        silence_time_s=1.0,
+        reconnect_on_error=False,
         settings=ElevenLabsTTSService.Settings(**settings_kwargs),
     )

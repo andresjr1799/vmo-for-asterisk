@@ -22,7 +22,7 @@ except ImportError:
         def link(self, n): pass
 
 
-def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileCfg", *, keyterms: list[str] | None = None) -> Any:
+def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileCfg") -> Any:
     params = dict(resolved.params)
     model = params.pop("model", None)
     language = params.pop("language", "es")
@@ -34,11 +34,9 @@ def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileC
         settings_kwargs["endpointing"] = params.pop("endpointing")
     else:
         settings_kwargs["endpointing"] = 100
-    if keyterms:
-        settings_kwargs["keyterm"] = keyterms
 
     extra: dict[str, Any] = {}
-    known = {"model", "language", "endpointing", "keyterm"}
+    known = {"model", "language", "endpointing"}
     for key, value in params.items():
         if key not in known:
             extra[key] = value
@@ -48,6 +46,7 @@ def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileC
     return DeepgramSTTService(
         api_key=resolved.api_key,
         should_interrupt=False,
-        sample_rate=audio_profile.in_rate,
+        encoding="linear16",
+        sample_rate=8000,
         settings=DeepgramSTTService.Settings(**settings_kwargs),
     )

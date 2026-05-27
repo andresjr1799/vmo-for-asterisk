@@ -17,11 +17,6 @@ except ImportError:
         """Stub when pipecat-ai is not installed."""
         def __init__(self, **kw): self._kw = kw
 
-try:
-    from pipecat.utils.text.xml_function_tag_filter import XMLFunctionTagFilter
-except ImportError:
-    XMLFunctionTagFilter = None
-
 
 def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileCfg") -> Any:
     params = dict(resolved.params)
@@ -31,7 +26,5 @@ def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileC
     return DeepgramTTSService(
         api_key=resolved.api_key,
         sample_rate=audio_profile.out_rate,
-        text_filters=[XMLFunctionTagFilter()] if XMLFunctionTagFilter else [],
-        silence_time_s=1.0,
         **params,
     )
