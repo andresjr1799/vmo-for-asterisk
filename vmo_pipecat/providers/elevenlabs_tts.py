@@ -14,15 +14,18 @@ if TYPE_CHECKING:
 
 try:
     from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
-    from pipecat.utils.text.xml_function_tag_filter import XMLFunctionTagFilter
     _PIPECAT = True
 except ImportError:
     _PIPECAT = False
-    XMLFunctionTagFilter = None  # type: ignore[assignment]
 
     class ElevenLabsTTSService:  # type: ignore[no-redef]
         def __init__(self, **kw): self._kw = kw
         def link(self, n): pass
+
+try:
+    from pipecat.utils.text.xml_function_tag_filter import XMLFunctionTagFilter
+except ImportError:
+    XMLFunctionTagFilter = None
 
 
 def build_service(resolved: "ElevenLabsProviderCfg", audio_profile: "AudioProfileCfg") -> Any:

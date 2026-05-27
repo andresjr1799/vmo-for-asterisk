@@ -9,15 +9,18 @@ if TYPE_CHECKING:
 
 try:
     from pipecat.services.deepgram.tts import DeepgramTTSService
-    from pipecat.utils.text.xml_function_tag_filter import XMLFunctionTagFilter
     _PIPECAT = True
 except ImportError:
     _PIPECAT = False
-    XMLFunctionTagFilter = None  # type: ignore[assignment]
 
     class DeepgramTTSService:  # type: ignore[no-redef]
         """Stub when pipecat-ai is not installed."""
         def __init__(self, **kw): self._kw = kw
+
+try:
+    from pipecat.utils.text.xml_function_tag_filter import XMLFunctionTagFilter
+except ImportError:
+    XMLFunctionTagFilter = None
 
 
 def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileCfg") -> Any:
