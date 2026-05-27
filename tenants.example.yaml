@@ -131,7 +131,7 @@ pipelines:
     tts: el_tts
     vad: smart_turn
     vad_params:
-      stop_secs: 2.0       # SmartTurn turn-stop timeout
+      stop_secs: 1.0       # SmartTurn turn-stop timeout (lower = more interruptions)
 
   # Modular: ElevenLabs STT + OpenAI LLM + ElevenLabs TTS
   pipe_modular_el:

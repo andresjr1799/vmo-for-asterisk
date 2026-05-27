@@ -36,7 +36,7 @@ except ImportError:
         def __init__(self, **kw): pass
 
 
-def build_smart_turn_analyzer(stop_secs: float = 2.0) -> Optional[LocalSmartTurnAnalyzerV3]:
+def build_smart_turn_analyzer(stop_secs: float = 1.0) -> Optional[LocalSmartTurnAnalyzerV3]:
     if not _PIPECAT:
         logger.warning("pipecat-ai not installed — SmartTurn disabled, falling back to SileroVAD")
         return None

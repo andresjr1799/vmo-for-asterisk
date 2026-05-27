@@ -179,8 +179,12 @@ def build_modular_pipeline(
 
     if vad_kind == "smart_turn":
         from ..vad.smart_turn import build_smart_turn_analyzer
-        stop_secs = float(vp.stop_secs or 2.0)
+        stop_secs = float(vp.stop_secs or 1.0)
         smart_analyzer = build_smart_turn_analyzer(stop_secs=stop_secs)
+        # Crear VAD analizer para detección de inicio de habla (más sensible)
+        vad_analyzer = SileroVADAnalyzer(
+            params=VADParams(stop_secs=0.15, start_secs=0.08)
+        )
         if smart_analyzer:
             user_turn_strategies = UserTurnStrategies(
                 start=[
@@ -191,7 +195,7 @@ def build_modular_pipeline(
                     TurnAnalyzerUserTurnStopStrategy(turn_analyzer=smart_analyzer),
                 ],
             )
-            logger.info("VAD: smart_turn", stop_secs=stop_secs)
+            logger.info("VAD: smart_turn", stop_secs=stop_secs, vad_start_secs=0.08)
 
     elif vad_kind == "silero":
         start_secs = float(ov.speech_threshold_ms or 150) / 1000.0
