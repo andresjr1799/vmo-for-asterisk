@@ -53,7 +53,6 @@ class CallRegistry:
                 "vmo_call_id": c.identity.vmo_call_id,
                 "tenant_id": c.identity.tenant_id,
                 "did": c.identity.did,
-                "node_id": c.identity.node_id,
             }
             for c in self._by_vmo_call_id.values()
         ]

@@ -26,14 +26,13 @@ from ..ari.events import (
     STASIS_END,
     CHANNEL_DESTROYED,
     CHANNEL_DTMF_RECEIVED,
-    NODE_ID_KEY,
 )
 from ..observability.log_setup import get_logger
 from ..observability.otel import get_tracer
 from ..transport.asterisk_transport import AsteriskAudioSocketTransport
 
 if TYPE_CHECKING:
-    from ..ari.pool import ARIPool
+    from ..ari.client import ARIClient
     from ..audio.audiosocket_server import AudioSocketServer
     from ..call.router import CallRouter
     from ..call.registry import CallRegistry
@@ -68,7 +67,7 @@ class CallLifecycle:
 
     def __init__(
         self,
-        pool: "ARIPool",
+        ari_client: "ARIClient",
         audiosocket: "AudioSocketServer",
         router: "CallRouter",
         registry: "CallRegistry",
@@ -76,7 +75,7 @@ class CallLifecycle:
         event_bus: "EventBus",
         stasis_app: str = "vmo-pipecat-app",
     ) -> None:
-        self._pool = pool
+        self._ari_client = ari_client
         self._audiosocket = audiosocket
         self._router = router
         self._registry = registry
@@ -142,29 +141,24 @@ class CallLifecycle:
         channel = event.get("channel", {})
         channel_id: str = channel.get("id", "")
         channel_name: str = channel.get("name", "")
-        node_id: str = event.get(NODE_ID_KEY, "")
 
         # Detectar canal AudioSocket: por nombre de canal
         is_audiosocket = channel_name.startswith("AudioSocket/")
 
         if is_audiosocket:
-            await self._on_audiosocket_channel(event, channel_id, node_id)
+            await self._on_audiosocket_channel(event, channel_id)
         else:
-            await self._on_caller_channel(event, channel_id, node_id)
+            await self._on_caller_channel(event, channel_id)
 
     # ------------------------------------------------------------------
     # AudioSocket channel entra a Stasis → leer UUID via API y añadir al bridge
     # ------------------------------------------------------------------
 
     async def _on_audiosocket_channel(
-        self, event: dict, channel_id: str, node_id: str
+        self, event: dict, channel_id: str
     ) -> None:
         # Leer AUDIOSOCKET_UUID via GET API — no depender de channelvars
-        try:
-            ari = self._pool.client_for(node_id)
-        except KeyError:
-            logger.warning("No ARI client for node on audiosocket channel", node_id=node_id)
-            return
+        ari = self._ari_client
 
         audio_uuid = await _get_channel_var(ari, channel_id, "AUDIOSOCKET_UUID")
 
@@ -203,14 +197,10 @@ class CallLifecycle:
     # ------------------------------------------------------------------
 
     async def _on_caller_channel(
-        self, event: dict, caller_channel_id: str, node_id: str
+        self, event: dict, caller_channel_id: str
     ) -> None:
         # Obtener ARI client
-        try:
-            ari = self._pool.client_for(node_id)
-        except KeyError:
-            logger.error("No ARI client for node", node_id=node_id)
-            return
+        ari = self._ari_client
 
         # [5] Leer variables via GET API (patrón VMO Engine original)
         tenant_id   = await _get_channel_var(ari, caller_channel_id, "tenant_id")
@@ -232,7 +222,6 @@ class CallLifecycle:
             caller_id=caller_id,
             tenant_id=tenant_id,
             tenant_name=tenant_name,
-            node_id=node_id,
             did=did,
         )
 
@@ -311,7 +300,7 @@ class CallLifecycle:
             identity=identity,
             session_config=session_config,
             bridge_id=bridge_id,
-            pool=self._pool,
+            ari_client=self._ari_client,
             audiosocket=self._audiosocket,
             transport=transport,
             router=self._router,

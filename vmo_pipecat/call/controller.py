@@ -3,8 +3,6 @@ CallController — one instance per active call.
 
 Phase 3: transport-only echo mode when PipeCat is not installed.
 Phase 4+: PipelineFactory builds the real PipeCat pipeline (STT+LLM+TTS or full-agent).
-
-All ARI calls go through pool.client_for(identity.node_id).
 """
 
 from __future__ import annotations
@@ -23,7 +21,7 @@ from .metrics import CallMetrics
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Span
-    from ..ari.pool import ARIPool
+    from ..ari.client import ARIClient
     from ..audio.audiosocket_server import AudioSocketServer
     from ..call.router import CallRouter
     from ..call.registry import CallRegistry
@@ -49,7 +47,7 @@ class CallController:
         identity: CallIdentity,
         session_config: "SessionConfig",
         bridge_id: str,
-        pool: "ARIPool",
+        ari_client: "ARIClient",
         audiosocket: "AudioSocketServer",
         transport: "AsteriskAudioSocketTransport",
         router: "CallRouter",
@@ -61,7 +59,7 @@ class CallController:
         self.session_config = session_config
         self.bridge_id = bridge_id
 
-        self._pool = pool
+        self._ari_client = ari_client
         self._audiosocket = audiosocket
         self._transport = transport
         self._router = router
@@ -100,7 +98,7 @@ class CallController:
             from ..pipelines.greeting import emit_greeting
 
             actions = AsteriskActions(
-                pool=self._pool,
+                ari_client=self._ari_client,
                 identity=self.identity,
                 transfer_context=self.session_config.transfer.context,
                 event_bus=self._event_bus,
@@ -261,7 +259,7 @@ class CallController:
         self._router.remove(self)
         await self._registry.remove(self)
 
-        ari = self._pool.client_for(self.identity.node_id)
+        ari = self._ari_client
 
         # Always hang up the AudioSocket channel
         if self._audio_channel_id:

@@ -31,7 +31,7 @@ class AppState:
     config_store: Any
     registry: Any
     audiosocket: Any
-    pool: Any
+    ari_client: Any
     event_bus: Any
     admin_token: str
     reload_fn: Callable[[], Awaitable[bool]]
@@ -62,7 +62,7 @@ def build_app(state: AppState) -> FastAPI:
         """Readiness probe: config valid + ARI ≥1 node + AudioSocket bound."""
         s: AppState = app.state.vmo
         config_ok = bool(s.config_store.is_valid)
-        ari_ok = bool(s.pool.is_any_connected)
+        ari_ok = bool(s.ari_client.is_connected)
         as_ok = bool(s.audiosocket.is_bound)
         all_ok = config_ok and ari_ok and as_ok
 

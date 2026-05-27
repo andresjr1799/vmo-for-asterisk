@@ -190,14 +190,14 @@ def record_config_reload(result: str) -> None:
     _config_reload.add(1, {"result": result})
 
 
-def record_ari_reconnect(node_id: str) -> None:
+def record_ari_reconnect() -> None:
     assert _ari_reconnect
-    _ari_reconnect.add(1, {"node_id": node_id})
+    _ari_reconnect.add(1)
 
 
-def set_ari_node_connected(node_id: str, connected: bool) -> None:
+def set_ari_connected(connected: bool) -> None:
     assert _ari_node_connected
-    _ari_node_connected.add(1 if connected else -1, {"node_id": node_id})
+    _ari_node_connected.add(1 if connected else -1)
 
 
 def record_llm_tokens(tenant_id: str, provider: str, tokens_in: int, tokens_out: int) -> None:

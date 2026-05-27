@@ -14,6 +14,3 @@ PLAYBACK_STARTED = "PlaybackStarted"
 
 BRIDGE_CREATED = "BridgeCreated"
 BRIDGE_DESTROYED = "BridgeDestroyed"
-
-# Injected by ARIPool before dispatching to handlers
-NODE_ID_KEY = "_vmo_node_id"

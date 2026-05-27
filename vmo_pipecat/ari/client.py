@@ -3,8 +3,6 @@ ARIClient — single-node Asterisk REST Interface client.
 
 Manages one WebSocket + HTTP session per Asterisk node. Supports supervised
 reconnection with exponential back-off (1 s → 60 s).
-
-Used directly for single-node deployments; managed by ARIPool for multi-node.
 """
 
 from __future__ import annotations

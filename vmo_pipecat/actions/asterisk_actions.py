@@ -3,8 +3,6 @@ AsteriskActions — LLM function-call callbacks that execute ARI operations.
 
 One instance per call. Callbacks follow PipeCat's function-calling convention:
     async def handler(function_name, tool_call_id, args, llm, context, result_callback)
-
-ARI calls always use pool.client_for(identity.node_id) — never a global client.
 """
 
 from __future__ import annotations
@@ -15,7 +13,7 @@ from ..observability.log_setup import get_logger
 from ..observability.otel_metrics import record_transfer, record_tool_call
 
 if TYPE_CHECKING:
-    from ..ari.pool import ARIPool
+    from ..ari.client import ARIClient
     from ..call.identity import CallIdentity
     from ..events.bus import EventBus
 
@@ -31,12 +29,12 @@ class AsteriskActions:
 
     def __init__(
         self,
-        pool: "ARIPool",
+        ari_client: "ARIClient",
         identity: "CallIdentity",
         transfer_context: str,
         event_bus: "EventBus",
     ) -> None:
-        self._pool = pool
+        self._ari_client = ari_client
         self._identity = identity
         self._transfer_context = transfer_context
         self._event_bus = event_bus
@@ -66,8 +64,7 @@ class AsteriskActions:
         logger.info("AsteriskActions: transfer_call", target=target, reason=reason)
 
         try:
-            ari = self._pool.client_for(self._identity.node_id)
-            ok = await ari.continue_in_dialplan(
+            ok = await self._ari_client.continue_in_dialplan(
                 self._identity.asterisk_channel_id,
                 context=self._transfer_context,
                 extension=target,
@@ -109,8 +106,7 @@ class AsteriskActions:
         reason = str(args.get("reason", "llm_initiated"))
         logger.info("AsteriskActions: hangup_call", reason=reason)
         try:
-            ari = self._pool.client_for(self._identity.node_id)
-            await ari.hangup_channel(self._identity.asterisk_channel_id)
+            await self._ari_client.hangup_channel(self._identity.asterisk_channel_id)
             await self._event_bus.emit(
                 "vmo.call.tool_call", self._identity, name="hangup_call", outcome="ok"
             )
@@ -137,8 +133,7 @@ class AsteriskActions:
             return
         logger.info("AsteriskActions: play_audio_file", uri=uri)
         try:
-            ari = self._pool.client_for(self._identity.node_id)
-            await ari.play_media(self._identity.asterisk_channel_id, uri)
+            await self._ari_client.play_media(self._identity.asterisk_channel_id, uri)
             await self._event_bus.emit(
                 "vmo.call.tool_call", self._identity, name="play_audio_file", outcome="ok", uri=uri
             )
@@ -165,8 +160,7 @@ class AsteriskActions:
             return
         logger.info("AsteriskActions: send_dtmf", digits=digits)
         try:
-            ari = self._pool.client_for(self._identity.node_id)
-            await ari.send_command(
+            await self._ari_client.send_command(
                 "POST",
                 f"channels/{self._identity.asterisk_channel_id}/dtmf",
                 params={"dtmf": digits},

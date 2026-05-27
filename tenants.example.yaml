@@ -14,14 +14,14 @@ defaults:
   audio_profile: telephony_hybrid
   stasis_app: vmo-pipecat-app
 
-# ── Asterisk nodes ─────────────────────────────────────────────────────────────
-asterisk_nodes:
-  - id: ast-1
-    host: ${AST1_HOST:-vmo_asterisk_1}
-    ari_port: 8088
-    ari_username: ${AST1_ARI_USERNAME:-vmo}
-    ari_password: ${AST1_ARI_PASSWORD}
-    ari_app: vmo-pipecat-app
+# ── Asterisk node ───────────────────────────────────────────────────────────────
+asterisk:
+  id: ast-1
+  host: ${AST1_HOST:-vmo_asterisk_1}
+  ari_port: 8088
+  ari_username: ${AST1_ARI_USERNAME:-vmo}
+  ari_password: ${AST1_ARI_PASSWORD}
+  ari_app: vmo-pipecat-app
 
 # ── AudioSocket listener ───────────────────────────────────────────────────────
 audiosocket:

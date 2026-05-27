@@ -247,7 +247,7 @@ class FallbackCfg(BaseModel):
 
 class TenantsConfig(BaseModel):
     defaults: DefaultsCfg = Field(default_factory=DefaultsCfg)
-    asterisk_nodes: list[AsteriskNodeCfg] = Field(default_factory=list)
+    asterisk: Optional[AsteriskNodeCfg] = None
     audiosocket: AudioSocketCfg = Field(default_factory=AudioSocketCfg)
     audio_profiles: dict[str, AudioProfileCfg] = Field(default_factory=dict)
     providers: dict[str, ProviderCfg] = Field(default_factory=dict)

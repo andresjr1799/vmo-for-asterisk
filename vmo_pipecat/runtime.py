@@ -3,7 +3,7 @@ VMO-PipeCat-For-Asterisk — async runtime supervisor (Phase 10).
 
 Wires all components and manages their full lifecycle:
   ConfigStore + ConfigWatcher   → hot-reload (§7)
-  ARIPool (instrumented)        → multi-Asterisk ARI WebSocket
+  ARIClient (instrumented)      → single ARI WebSocket connection
   AudioSocketServer             → TLV TCP listener (singleton)
   CallRouter + CallRegistry     → AudioSocket → CallController dispatch
   CallLifecycle                 → ARI event → call setup/teardown
@@ -26,7 +26,6 @@ from .ari.events import (
     STASIS_START, STASIS_END, CHANNEL_DESTROYED,
     CHANNEL_DTMF_RECEIVED, CHANNEL_TALKING_STARTED, CHANNEL_TALKING_FINISHED,
 )
-from .ari.pool import ARIPool
 from .audio.audiosocket_server import AudioSocketServer
 from .call.lifecycle import CallLifecycle
 from .call.registry import CallRegistry
@@ -41,7 +40,7 @@ from .observability.log_setup import configure_logging, get_logger
 from .observability.otel_metrics import (
     record_config_reload,
     record_ari_reconnect,
-    set_ari_node_connected,
+    set_ari_connected,
 )
 from .tenancy.resolver import TenantResolver
 
@@ -58,7 +57,7 @@ class _InstrumentedARIClient(ARIClient):
     async def _mark_disconnected_and_backoff(self, *args, **kwargs) -> bool:
         result = await super()._mark_disconnected_and_backoff(*args, **kwargs)
         if result:   # True = about to attempt reconnect
-            record_ari_reconnect(self.node_id)
+            record_ari_reconnect()
         return result
 
 
@@ -104,22 +103,21 @@ async def _do_reload(config_path: str, event_bus=None) -> bool:
         return False
 
 
-# ── ARIPool builder ─────────────────────────────────────────────────────────────
+# ── ARIClient builder ────────────────────────────────────────────────────────────
 
-def _build_pool(cfg: TenantsConfig) -> ARIPool:
-    pool = ARIPool()
-    for node in cfg.asterisk_nodes:
-        scheme = getattr(node, "ari_scheme", "http") or "http"
-        base_url = f"{scheme}://{node.host}:{node.ari_port}/ari"
-        client = _InstrumentedARIClient(
-            username=node.ari_username,
-            password=node.ari_password,
-            base_url=base_url,
-            app_name=node.ari_app,
-            node_id=node.id,
-        )
-        pool.add_node(node.id, client)
-    return pool
+def _build_client(cfg: TenantsConfig) -> _InstrumentedARIClient:
+    node = cfg.asterisk
+    if node is None:
+        raise ValueError("No asterisk configuration found in tenants.yaml")
+    scheme = getattr(node, "ari_scheme", "http") or "http"
+    base_url = f"{scheme}://{node.host}:{node.ari_port}/ari"
+    return _InstrumentedARIClient(
+        username=node.ari_username,
+        password=node.ari_password,
+        base_url=base_url,
+        app_name=node.ari_app,
+        node_id=node.id,
+    )
 
 
 # ── Graceful shutdown ───────────────────────────────────────────────────────────
@@ -234,32 +232,36 @@ async def main() -> None:
     )
     await audiosocket.start()
 
-    # ARIPool (instrumented)
-    pool = _build_pool(cfg) if cfg else ARIPool()
-
-    # Emit initial ARI node state
-    if cfg:
-        for node in cfg.asterisk_nodes:
-            set_ari_node_connected(node.id, False)
-            await event_bus.emit(
-                "vmo.system.ari.node_state",
-                node_id=node.id,
-                state="connecting",
-                attempt=0,
-            )
+    # ARIClient (instrumented) — single ARI connection
+    ari_client: _InstrumentedARIClient | None = None
+    if cfg and cfg.asterisk:
+        ari_client = _build_client(cfg)
+        set_ari_connected(False)
+        await event_bus.emit(
+            "vmo.system.ari.node_state",
+            node_id=cfg.asterisk.id,
+            state="connecting",
+            attempt=0,
+        )
+    elif cfg:
+        logger.warning("No asterisk configuration in tenants.yaml — ARI disabled")
+    else:
+        logger.warning("No configuration loaded — ARI disabled")
 
     # CallLifecycle
     lifecycle = CallLifecycle(
-        pool=pool, audiosocket=audiosocket, router=router,
+        ari_client=ari_client, audiosocket=audiosocket, router=router,
         registry=registry, resolver=resolver, event_bus=event_bus,
         stasis_app=stasis_app,
-    )
-    pool.on_event(STASIS_START, lifecycle._on_stasis_start)
-    pool.on_event(STASIS_END, lifecycle._on_stasis_end)
-    pool.on_event(CHANNEL_DESTROYED, lifecycle._on_channel_destroyed)
-    pool.on_event(CHANNEL_DTMF_RECEIVED, lifecycle._on_dtmf_received)
-    pool.on_event(CHANNEL_TALKING_STARTED, lifecycle._on_channel_talking_started)
-    pool.on_event(CHANNEL_TALKING_FINISHED, lifecycle._on_channel_talking_finished)
+    ) if ari_client else None
+
+    if ari_client:
+        ari_client.add_event_handler(STASIS_START, lifecycle._on_stasis_start)
+        ari_client.add_event_handler(STASIS_END, lifecycle._on_stasis_end)
+        ari_client.add_event_handler(CHANNEL_DESTROYED, lifecycle._on_channel_destroyed)
+        ari_client.add_event_handler(CHANNEL_DTMF_RECEIVED, lifecycle._on_dtmf_received)
+        ari_client.add_event_handler(CHANNEL_TALKING_STARTED, lifecycle._on_channel_talking_started)
+        ari_client.add_event_handler(CHANNEL_TALKING_FINISHED, lifecycle._on_channel_talking_finished)
 
     # Hot-reload watcher
     watcher: ConfigWatcher | None = None
@@ -275,7 +277,7 @@ async def main() -> None:
         config_store=_config_store,
         registry=registry,
         audiosocket=audiosocket,
-        pool=pool,
+        ari_client=ari_client,
         event_bus=event_bus,
         admin_token=admin_token,
         reload_fn=lambda: _do_reload(config_path, event_bus=event_bus),
@@ -287,10 +289,11 @@ async def main() -> None:
             name="http-server",
         ),
         asyncio.create_task(
-            pool.start_all_listening(),
-            name="ari-pool",
-        ),
+            ari_client.start_listening(),
+            name="ari-listener",
+        ) if ari_client else None,
     ]
+    tasks = [t for t in tasks if t is not None]
 
     logger.info("Runtime supervisor ready — all components started")
     await _shutdown_event.wait()
@@ -306,7 +309,8 @@ async def main() -> None:
     await _drain_calls(registry, timeout_s=drain_timeout)
 
     # 3. Disconnect infrastructure
-    await pool.stop_all()
+    if ari_client:
+        await ari_client.disconnect()
     await audiosocket.stop()
     await event_bus.close()
 

@@ -12,7 +12,6 @@ class CallIdentity:
     call_id_sbc: str            # X-CALL-ID-SBC SIP header
     tenant_id: str              # X-TENANT-ID SIP header
     tenant_name: str            # CHANNEL(tenant_name) — set by dialplan per trunk
-    node_id: str                # _vmo_node_id injected by ARIPool
     did: str                    # ${EXTEN} — DID dialled into Asterisk
     caller_id: str = ""         # CHANNEL(caller_id) — caller number from dialplan
 
