@@ -1,23 +1,20 @@
 """
-AsteriskAudioSocketInputTransport — PipeCat 1.1.0.
+AsteriskAudioSocketInputTransport — PipeCat 1.2.1 compatible.
 
-Patrón del VMO Engine original:
-  1. Recibe PCM16 del AudioSocket (tipo 0x18 = slin16)
-  2. Resamplea in_rate → 8000 Hz
-  3. Convierte PCM16 → μ-law
-  4. InputAudioRawFrame con audio=ulaw, sample_rate=8000
-  5. DeepgramSTTService configurado con encoding=mulaw, sample_rate=8000
+Recibe PCM16 del AudioSocket y lo inyecta al pipeline de pipecat.
+Usa buffer local para los frames que llegan antes de que el pipeline
+termine de arrancar (StartFrame + TaskManager).
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import Optional, TYPE_CHECKING
 
 try:
     from pipecat.transports.base_input import BaseInputTransport
     from pipecat.transports.base_transport import TransportParams
-    from pipecat.frames.frames import InputAudioRawFrame, StartFrame
-    from pipecat.processors.frame_processor import FrameDirection
+    from pipecat.frames.frames import InputAudioRawFrame
     _PIPECAT = True
 except ImportError:
     _PIPECAT = False
@@ -43,18 +40,11 @@ except ImportError:
             self.sample_rate = sample_rate
             self.num_channels = num_channels
 
-    class StartFrame:  # type: ignore[no-redef]
-        pass
-
-    class FrameDirection:  # type: ignore[no-redef]
-        DOWNSTREAM = 0
-
 if TYPE_CHECKING:
     from ..audio.audiosocket_server import AudioSocketServer
 
 
 class AsteriskAudioSocketInputTransport(BaseInputTransport):
-    """Transport de entrada: convierte PCM16 del bridge → μ-law 8kHz para Deepgram."""
 
     def __init__(
         self,
@@ -69,6 +59,8 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
         self._channels = channels
         self._conn_id: Optional[str] = None
         self._resample_state = None
+        self._started = False
+        self._early_frames: list[bytes] = []
 
     def bind(self, conn_id: str) -> None:
         self._conn_id = conn_id
@@ -81,13 +73,14 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
         if not audio_bytes:
             return
 
+        if not self._started:
+            self._early_frames.append(audio_bytes)
+            return
+
         from ..observability.log_setup import get_logger
         _log = get_logger(__name__)
 
         self._push_audio_count = getattr(self, '_push_audio_count', 0) + 1
-
-        if self._push_audio_count == 1:
-            await self.process_frame(StartFrame(), FrameDirection.DOWNSTREAM)
 
         frame = InputAudioRawFrame(
             audio=audio_bytes,
@@ -108,11 +101,24 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
         self._resample_state = None
         await super().start(frame)
         await self.set_transport_ready(frame)
+        self._started = True
+
+        if self._early_frames:
+            from ..observability.log_setup import get_logger
+            _log = get_logger(__name__)
+            _log.debug("Flushing early audio frames", count=len(self._early_frames))
+            for audio_bytes in self._early_frames:
+                await self.push_audio(audio_bytes)
+            self._early_frames.clear()
 
     async def stop(self, frame=None) -> None:
         self._conn_id = None
+        self._early_frames.clear()
+        self._started = False
         await super().stop(frame)
 
     async def cancel(self, frame=None) -> None:
         self._conn_id = None
+        self._early_frames.clear()
+        self._started = False
         await super().cancel(frame)
