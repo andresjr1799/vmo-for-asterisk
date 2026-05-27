@@ -11,6 +11,7 @@ Patrón del VMO Engine original:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Optional, TYPE_CHECKING
 
 try:
@@ -62,6 +63,7 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
         self._channels = channels
         self._conn_id: Optional[str] = None
         self._resample_state = None
+        self._audio_in_queue: asyncio.Queue = asyncio.Queue()
 
     def bind(self, conn_id: str) -> None:
         self._conn_id = conn_id
