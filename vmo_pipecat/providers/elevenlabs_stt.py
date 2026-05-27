@@ -21,11 +21,11 @@ except ImportError:
 
 
 def build_service(resolved: Any, audio_profile: "AudioProfileCfg") -> Any:
-    # ElevenLabsSTTService requiere aiohttp_session — crear una por llamada
     session = aiohttp.ClientSession() if aiohttp else None
     return ElevenLabsSTTService(
         api_key=resolved.api_key,
         aiohttp_session=session,
+        should_interrupt=False,
         sample_rate=audio_profile.in_rate,
         settings=ElevenLabsSTTService.Settings(language="es"),
     )

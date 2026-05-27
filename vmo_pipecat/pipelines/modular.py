@@ -44,10 +44,25 @@ try:
     from pipecat.processors.aggregators.llm_context import LLMContext, LLMContextMessage, NOT_GIVEN
     from pipecat.processors.aggregators.llm_response_universal import (
         LLMContextAggregatorPair,
+        LLMAssistantAggregatorParams,
         LLMUserAggregatorParams,
     )
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.audio.vad.vad_analyzer import VADParams
+    from pipecat.turns.user_mute import (
+        CallbackUserMuteStrategy,
+        FunctionCallUserMuteStrategy,
+        MuteUntilFirstBotCompleteUserMuteStrategy,
+    )
+    from pipecat.turns.user_start import (
+        TranscriptionUserTurnStartStrategy,
+    )
+    from pipecat.turns.user_start.vad_user_turn_start_strategy import VADUserTurnStartStrategy
+    from pipecat.turns.user_stop import (
+        SpeechTimeoutUserTurnStopStrategy,
+        TurnAnalyzerUserTurnStopStrategy,
+    )
+    from pipecat.turns.user_turn_strategies import UserTurnStrategies
     _PIPECAT = True
 except ImportError:
     _PIPECAT = False
@@ -74,6 +89,9 @@ except ImportError:
         def user(self): return _AggStub()
         def assistant(self): return _AggStub()
 
+    class LLMAssistantAggregatorParams:  # type: ignore[no-redef]
+        def __init__(self, **kw): pass
+
     class LLMUserAggregatorParams:  # type: ignore[no-redef]
         def __init__(self, **kw): pass
 
@@ -81,6 +99,30 @@ except ImportError:
         def __init__(self, **kw): pass
 
     class VADParams:  # type: ignore[no-redef]
+        def __init__(self, **kw): pass
+
+    class MuteUntilFirstBotCompleteUserMuteStrategy:  # type: ignore[no-redef]
+        def __init__(self): pass
+
+    class FunctionCallUserMuteStrategy:  # type: ignore[no-redef]
+        def __init__(self): pass
+
+    class CallbackUserMuteStrategy:  # type: ignore[no-redef]
+        def __init__(self, **kw): pass
+
+    class VADUserTurnStartStrategy:  # type: ignore[no-redef]
+        def __init__(self, **kw): pass
+
+    class TranscriptionUserTurnStartStrategy:  # type: ignore[no-redef]
+        def __init__(self, **kw): pass
+
+    class SpeechTimeoutUserTurnStopStrategy:  # type: ignore[no-redef]
+        def __init__(self, **kw): pass
+
+    class TurnAnalyzerUserTurnStopStrategy:  # type: ignore[no-redef]
+        def __init__(self, **kw): pass
+
+    class UserTurnStrategies:  # type: ignore[no-redef]
         def __init__(self, **kw): pass
 
 
@@ -122,16 +164,37 @@ def build_modular_pipeline(
         tools=tool_schemas if tool_schemas else NOT_GIVEN,
     )
 
-    # ── VAD (desde YAML, no hardcodeado) ──────────────────────────────────────
+    # ── VAD + Turn strategies (desde YAML, no hardcodeado) ────────────────────
     vad_kind = getattr(pipeline_cfg, "vad", "silero") or "silero"
     vad_analyzer = None
+    user_turn_strategies: Optional["UserTurnStrategies"] = None
+    user_mute_strategies = [
+        MuteUntilFirstBotCompleteUserMuteStrategy(),
+        FunctionCallUserMuteStrategy(),
+    ]
+    user_idle_timeout: Optional[float] = 30.0
 
-    if vad_kind == "silero":
-        from ..config.models import VADCfg, VADOverridesCfg, OverridesCfg
-        # Resolver: pipeline.vad_params > tenant overrides (que ya incluyen defaults)
-        ov = getattr(session.overrides, "vad", None) or VADOverridesCfg()
-        vp = getattr(pipeline_cfg, "vad_params", None) or VADCfg()
+    from ..config.models import VADCfg, VADOverridesCfg, OverridesCfg
+    ov = getattr(session.overrides, "vad", None) or VADOverridesCfg()
+    vp = getattr(pipeline_cfg, "vad_params", None) or VADCfg()
 
+    if vad_kind == "smart_turn":
+        from ..vad.smart_turn import build_smart_turn_analyzer
+        stop_secs = float(vp.stop_secs or 2.0)
+        smart_analyzer = build_smart_turn_analyzer(stop_secs=stop_secs)
+        if smart_analyzer:
+            user_turn_strategies = UserTurnStrategies(
+                start=[
+                    VADUserTurnStartStrategy(),
+                    TranscriptionUserTurnStartStrategy(),
+                ],
+                stop=[
+                    TurnAnalyzerUserTurnStopStrategy(turn_analyzer=smart_analyzer),
+                ],
+            )
+            logger.info("VAD: smart_turn", stop_secs=stop_secs)
+
+    elif vad_kind == "silero":
         start_secs = float(ov.speech_threshold_ms or 150) / 1000.0
         stop_secs  = float(ov.silence_threshold_ms or 200) / 1000.0
 
@@ -143,6 +206,15 @@ def build_modular_pipeline(
         vad_analyzer = SileroVADAnalyzer(
             params=VADParams(stop_secs=stop_secs, start_secs=start_secs)
         )
+        user_turn_strategies = UserTurnStrategies(
+            start=[
+                VADUserTurnStartStrategy(),
+                TranscriptionUserTurnStartStrategy(),
+            ],
+            stop=[
+                SpeechTimeoutUserTurnStopStrategy(),
+            ],
+        )
         logger.info("VAD: silero", stop_secs=stop_secs, start_secs=start_secs)
 
     elif vad_kind == "asterisk_talk_detect":
@@ -151,7 +223,15 @@ def build_modular_pipeline(
     elif vad_kind == "none":
         logger.info("VAD: none (transcription-based turn detection)")
 
-    user_params = LLMUserAggregatorParams(vad_analyzer=vad_analyzer)
+    if user_turn_strategies is None:
+        user_turn_strategies = UserTurnStrategies()
+
+    user_params = LLMUserAggregatorParams(
+        vad_analyzer=vad_analyzer,
+        user_turn_strategies=user_turn_strategies,
+        user_mute_strategies=user_mute_strategies,
+        user_idle_timeout=user_idle_timeout,
+    )
     context_pair = LLMContextAggregatorPair(context, user_params=user_params)
 
     # ── Tool registration ──────────────────────────────────────────────────────
@@ -194,6 +274,8 @@ def build_modular_pipeline(
     params = PipelineParams(
         audio_in_sample_rate=audio.in_rate,
         audio_out_sample_rate=audio.out_rate,
+        enable_metrics=True,
+        enable_usage_metrics=True,
     )
     task = PipelineTask(pipeline, params=params)
     runner = PipelineRunner()

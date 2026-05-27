@@ -9,9 +9,11 @@ if TYPE_CHECKING:
 
 try:
     from pipecat.services.deepgram.tts import DeepgramTTSService
+    from pipecat.utils.text.xml_function_tag_filter import XMLFunctionTagFilter
     _PIPECAT = True
 except ImportError:
     _PIPECAT = False
+    XMLFunctionTagFilter = None  # type: ignore[assignment]
 
     class DeepgramTTSService:  # type: ignore[no-redef]
         """Stub when pipecat-ai is not installed."""
@@ -20,15 +22,13 @@ except ImportError:
 
 def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileCfg") -> Any:
     params = dict(resolved.params)
-    # Deepgram TTS usa "voice" (no "model") como nombre del parametro.
-    # Si el usuario paso "model", lo mapeamos a "voice".
     if "model" in params and "voice" not in params:
         params["voice"] = params.pop("model")
-    # "language" no se usa en la URL de Deepgram TTS — el idioma va en el
-    # nombre del modelo (ej: aura-2-celeste-es).
     params.pop("language", None)
     return DeepgramTTSService(
         api_key=resolved.api_key,
         sample_rate=audio_profile.out_rate,
+        text_filters=[XMLFunctionTagFilter()] if XMLFunctionTagFilter else [],
+        silence_time_s=1.0,
         **params,
     )

@@ -22,12 +22,7 @@ except ImportError:
         def link(self, n): pass
 
 
-def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileCfg") -> Any:
-    """Deepgram STT con linear16 8kHz (PCM16 nativo de AudioSocket /c(slin)).
-
-    El AsteriskAudioSocketInputTransport envia PCM16 8kHz sin conversion.
-    Deepgram recibe encoding=linear16 sample_rate=8000.
-    """
+def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileCfg", *, keyterms: list[str] | None = None) -> Any:
     params = dict(resolved.params)
     model = params.pop("model", None)
     language = params.pop("language", "es")
@@ -38,10 +33,12 @@ def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileC
     if "endpointing" in params:
         settings_kwargs["endpointing"] = params.pop("endpointing")
     else:
-        settings_kwargs["endpointing"] = 600
+        settings_kwargs["endpointing"] = 100
+    if keyterms:
+        settings_kwargs["keyterm"] = keyterms
 
     extra: dict[str, Any] = {}
-    known = {"model", "language", "endpointing"}
+    known = {"model", "language", "endpointing", "keyterm"}
     for key, value in params.items():
         if key not in known:
             extra[key] = value
@@ -50,7 +47,7 @@ def build_service(resolved: "DeepgramProviderCfg", audio_profile: "AudioProfileC
 
     return DeepgramSTTService(
         api_key=resolved.api_key,
-        encoding="linear16",
-        sample_rate=8000,
+        should_interrupt=False,
+        sample_rate=audio_profile.in_rate,
         settings=DeepgramSTTService.Settings(**settings_kwargs),
     )

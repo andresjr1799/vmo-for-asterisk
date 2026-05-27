@@ -123,6 +123,16 @@ pipelines:
     tts: dg_tts
     vad: silero
 
+  # Modular: SmartTurn ML-based turn detection (replaces SileroVAD)
+  pipe_modular_smart_turn:
+    kind: modular
+    stt: dg_stt
+    llm: openai_llm
+    tts: el_tts
+    vad: smart_turn
+    vad_params:
+      stop_secs: 2.0       # SmartTurn turn-stop timeout
+
   # Modular: ElevenLabs STT + OpenAI LLM + ElevenLabs TTS
   pipe_modular_el:
     kind: modular

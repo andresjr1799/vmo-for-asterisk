@@ -75,6 +75,8 @@ def build_full_agent_pipeline(
     params = PipelineParams(
         audio_in_sample_rate=audio.in_rate,
         audio_out_sample_rate=audio.out_rate,
+        enable_metrics=True,
+        enable_usage_metrics=True,
     )
     task = PipelineTask(pipeline, params=params)
     runner = PipelineRunner()
