@@ -27,17 +27,18 @@ def build_service(resolved: "ElevenLabsProviderCfg", audio_profile: "AudioProfil
     params = dict(resolved.params)
     voice_id = params.pop("voice_id", "")
     model = params.pop("model_id", None) or params.pop("model", "eleven_multilingual_v2")
-    speed = params.pop("speed", None)
-    stability = params.pop("stability", None)
-    similarity_boost = params.pop("similarity_boost", None)
+    speed = params.pop("speed", 1.0)
+    stability = params.pop("stability", 0.5)
+    similarity_boost = params.pop("similarity_boost", 0.75)
 
-    settings_kwargs: dict[str, Any] = {"voice": voice_id, "model": model}
+    settings_kwargs: dict[str, Any] = {
+        "voice": voice_id,
+        "model": model,
+        "stability": float(stability),
+        "similarity_boost": float(similarity_boost),
+    }
     if speed is not None:
         settings_kwargs["speed"] = float(speed)
-    if stability is not None:
-        settings_kwargs["stability"] = float(stability)
-    if similarity_boost is not None:
-        settings_kwargs["similarity_boost"] = float(similarity_boost)
 
     return ElevenLabsTTSService(
         api_key=resolved.api_key,
