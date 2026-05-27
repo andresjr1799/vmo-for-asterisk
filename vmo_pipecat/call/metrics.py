@@ -64,6 +64,7 @@ class CallMetrics:
         # Active OTel child spans for current turn
         self._stt_span: Optional["Span"] = None
         self._llm_span: Optional["Span"] = None
+        self._tts_span: Optional["Span"] = None
 
     # ── Stage hooks ─────────────────────────────────────────────────────────
 
@@ -80,6 +81,10 @@ class CallMetrics:
         self._turn_stt_end = None
         self._turn_llm_start = None
         self._turn_tts_first = None
+        # End any lingering spans from previous turn
+        if self._tts_span is not None:
+            self._tts_span.end()
+            self._tts_span = None
         # Start STT child span with parent context
         if self._parent_span is not None:
             try:
@@ -96,12 +101,11 @@ class CallMetrics:
                 self._stt_span = None
 
     def stt_final(self, text: str = "") -> None:
-        if not self._turn_stt_end:
-            self._turn_stt_end = time.monotonic()
-            latency_ms = (self._turn_stt_end - self._turn_stt_start) * 1000
-            self.stt_latencies.append(latency_ms)
-            record_stt_latency(self._tenant_id, self._provider_stt, latency_ms)
-            logger.debug("STT final", provider=self._provider_stt, text=text[:80] if text else "", latency_ms=int(latency_ms))
+        self._turn_stt_end = time.monotonic()
+        latency_ms = (self._turn_stt_end - self._turn_stt_start) * 1000
+        self.stt_latencies.append(latency_ms)
+        record_stt_latency(self._tenant_id, self._provider_stt, latency_ms)
+        logger.debug("STT final", provider=self._provider_stt, text=text[:80] if text else "", latency_ms=int(latency_ms))
 
         # Close STT span + start LLM span
         if self._stt_span is not None:
@@ -130,6 +134,21 @@ class CallMetrics:
             record_llm_ttfb(self._tenant_id, self._provider_llm, ttfb_ms)
             logger.debug("LLM first token", provider=self._provider_llm, ttfb_ms=int(ttfb_ms))
 
+            # Start TTS span — measures time from first LLM token to first TTS audio
+            if self._parent_span is not None:
+                try:
+                    from opentelemetry import context as otel_ctx
+                    from opentelemetry import trace as otel_trace
+                    from ..observability.otel import get_tracer
+                    parent_ctx = otel_trace.set_span_in_context(self._parent_span)
+                    self._tts_span = get_tracer().start_span(
+                        "tts_ttfa",
+                        attributes={"provider": self._provider_tts},
+                        context=parent_ctx,
+                    )
+                except Exception:
+                    self._tts_span = None
+
     def tts_first_audio(self) -> None:
         if not self._turn_tts_first and self._turn_llm_start:
             self._turn_tts_first = time.monotonic()
@@ -143,21 +162,10 @@ class CallMetrics:
                 self._llm_span.end()
                 self._llm_span = None
 
-            # Record TTS first audio span
-            if self._parent_span is not None:
-                try:
-                    from opentelemetry import context as otel_ctx
-                    from opentelemetry import trace as otel_trace
-                    from ..observability.otel import get_tracer
-                    parent_ctx = otel_trace.set_span_in_context(self._parent_span)
-                    tts_span = get_tracer().start_span(
-                        "tts_ttfa",
-                        attributes={"provider": self._provider_tts, "latency_ms": tts_ms},
-                        context=parent_ctx,
-                    )
-                    tts_span.end()
-                except Exception:
-                    pass
+            # Close TTS span (started in llm_first_token)
+            if self._tts_span is not None:
+                self._tts_span.end()
+                self._tts_span = None
 
             # Turn response: stt_final → tts_first_audio
             if self._turn_stt_end:
@@ -169,6 +177,9 @@ class CallMetrics:
 
     def record_barge_in(self) -> None:
         self.barge_ins_count += 1
+        if self._tts_span is not None:
+            self._tts_span.end()
+            self._tts_span = None
 
     def record_error(self) -> None:
         self.errors_count += 1

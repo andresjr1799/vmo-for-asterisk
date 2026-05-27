@@ -48,6 +48,10 @@ class MetricsFrameProcessor(FrameProcessor):
             self._cm.record_error()
 
         elif self._stage == "stt" and isinstance(frame, TranscriptionFrame):
+            # Detect new turn without barge-in: previous transcription already processed
+            if self._first and self._cm._turn_stt_end is not None:
+                self._first = False
+                self._cm.stt_start()
             if not self._first and frame.text:
                 self._first = True
                 self._cm.stt_final(frame.text)
