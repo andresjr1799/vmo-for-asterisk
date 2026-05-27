@@ -27,12 +27,6 @@ except ImportError:
     class BaseInputTransport:  # type: ignore[no-redef]
         def __init__(self, params=None, **kw):
             self._params = params
-        async def push_audio_frame(self, frame): pass
-        async def start(self, frame=None): pass
-        async def set_transport_ready(self, frame=None): pass
-        async def stop(self, frame=None): pass
-        async def cancel(self, frame=None): pass
-        def link(self, next_proc): pass
 
     class InputAudioRawFrame:  # type: ignore[no-redef]
         def __init__(self, audio, sample_rate, num_channels):
@@ -54,7 +48,7 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
         channels: int = 1,
         **kwargs,
     ) -> None:
-        super().__init__(params, **kwargs)
+        super().__init__(params, enable_direct_mode=True, **kwargs)
         self._in_sample_rate = in_sample_rate
         self._channels = channels
         self._conn_id: Optional[str] = None
