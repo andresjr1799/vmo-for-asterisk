@@ -171,7 +171,7 @@ def build_modular_pipeline(
         MuteUntilFirstBotCompleteUserMuteStrategy(),
         FunctionCallUserMuteStrategy(),
     ]
-    user_idle_timeout: Optional[float] = 30.0
+    user_idle_timeout: Optional[float] = 15.0
 
     from ..config.models import VADCfg, VADOverridesCfg, OverridesCfg
     ov = getattr(session.overrides, "vad", None) or VADOverridesCfg()
@@ -181,9 +181,8 @@ def build_modular_pipeline(
         from ..vad.smart_turn import build_smart_turn_analyzer
         stop_secs = float(vp.stop_secs or 1.0)
         smart_analyzer = build_smart_turn_analyzer(stop_secs=stop_secs)
-        # Crear VAD analizer para detección de inicio de habla (más sensible)
         vad_analyzer = SileroVADAnalyzer(
-            params=VADParams(stop_secs=0.15, start_secs=0.08)
+            params=VADParams(stop_secs=0.2, start_secs=0.15)
         )
         if smart_analyzer:
             user_turn_strategies = UserTurnStrategies(
@@ -195,7 +194,7 @@ def build_modular_pipeline(
                     TurnAnalyzerUserTurnStopStrategy(turn_analyzer=smart_analyzer),
                 ],
             )
-            logger.info("VAD: smart_turn", stop_secs=stop_secs, vad_start_secs=0.08)
+            logger.info("VAD: smart_turn", stop_secs=stop_secs)
 
     elif vad_kind == "silero":
         start_secs = float(ov.speech_threshold_ms or 150) / 1000.0

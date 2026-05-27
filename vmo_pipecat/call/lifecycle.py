@@ -209,6 +209,10 @@ class CallLifecycle:
         caller_id   = await _get_channel_var(ari, caller_channel_id, "caller_id")
         did_var     = await _get_channel_var(ari, caller_channel_id, "did")
 
+        logger.debug("ARI channel vars",
+                     channel_id=caller_channel_id,
+                     tenant_id=tenant_id, caller_id=caller_id, did=did_var)
+
         # DID: preferir variable explícita, luego args de Stasis, luego EXTEN
         args = event.get("args") or []
         did = did_var or (args[0] if args else "")
