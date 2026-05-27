@@ -16,7 +16,8 @@ from typing import Optional, TYPE_CHECKING
 try:
     from pipecat.transports.base_input import BaseInputTransport
     from pipecat.transports.base_transport import TransportParams
-    from pipecat.frames.frames import InputAudioRawFrame
+    from pipecat.frames.frames import InputAudioRawFrame, StartFrame
+    from pipecat.processors.frame_processor import FrameDirection
     _PIPECAT = True
 except ImportError:
     _PIPECAT = False
@@ -41,6 +42,12 @@ except ImportError:
             self.audio = audio
             self.sample_rate = sample_rate
             self.num_channels = num_channels
+
+    class StartFrame:  # type: ignore[no-redef]
+        pass
+
+    class FrameDirection:  # type: ignore[no-redef]
+        DOWNSTREAM = 0
 
 if TYPE_CHECKING:
     from ..audio.audiosocket_server import AudioSocketServer
@@ -78,6 +85,9 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
         _log = get_logger(__name__)
 
         self._push_audio_count = getattr(self, '_push_audio_count', 0) + 1
+
+        if self._push_audio_count == 1:
+            await self.process_frame(StartFrame(), FrameDirection.DOWNSTREAM)
 
         frame = InputAudioRawFrame(
             audio=audio_bytes,
