@@ -50,7 +50,6 @@ try:
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.audio.vad.vad_analyzer import VADParams
     from pipecat.turns.user_mute import (
-        CallbackUserMuteStrategy,
         FunctionCallUserMuteStrategy,
         MuteUntilFirstBotCompleteUserMuteStrategy,
     )
