@@ -224,7 +224,6 @@ def build_modular_pipeline(
 
     elif vad_kind == "none":
         user_turn_strategies = UserTurnStrategies(
-            start=[TranscriptionUserTurnStartStrategy()],
             stop=[SpeechTimeoutUserTurnStopStrategy()],
         )
         logger.info("VAD: none (turn-based, no interruptions)")
