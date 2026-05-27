@@ -46,6 +46,7 @@ def build_service(resolved: "ElevenLabsProviderCfg", audio_profile: "AudioProfil
 
     return ElevenLabsTTSService(
         api_key=resolved.api_key,
+        reconnect_on_error=False,
         sample_rate=audio_profile.out_rate,
         text_filters=[XMLFunctionTagFilter()] if XMLFunctionTagFilter else [],
         silence_time_s=1.0,
