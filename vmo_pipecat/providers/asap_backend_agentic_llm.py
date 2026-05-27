@@ -56,12 +56,14 @@ def build_service(resolved: Any, audio_profile: "AudioProfileCfg", **kwargs: Any
 
     identity = kwargs.get("identity")
     tenant_id = identity.tenant_id if identity else ""
+    channel_id = identity.asterisk_channel_id if identity else ""
 
     return ASAPBackendAgenticLLM(
         url=url,
         api_key=resolved.api_key or "",
         timeout=timeout,
         tenant_id=tenant_id,
+        channel_id=channel_id,
     )
 
 
@@ -69,13 +71,14 @@ class ASAPBackendAgenticLLM(FrameProcessor):
 
     def __init__(
         self, *, url: str = "", api_key: str = "", timeout: int = 45,
-        tenant_id: str = "", **kwargs: Any,
+        tenant_id: str = "", channel_id: str = "", **kwargs: Any,
     ):
         super().__init__(**kwargs)
         self._url = url
         self._api_key = api_key
         self._timeout = timeout
         self._tenant_id = tenant_id
+        self._channel_id = channel_id
         self._functions: Dict[str, Any] = {}
 
     def register_function(self, name: str, cb: Any) -> None:
@@ -120,12 +123,20 @@ class ASAPBackendAgenticLLM(FrameProcessor):
             raise RuntimeError("httpx not installed")
 
         payload = {"user_input": user_input, "sentiment": {}}
+        import structlog
+        trace_id = ""
+        try:
+            ctx = structlog.contextvars.get_contextvars()
+            trace_id = ctx.get("trace_id", "")
+        except Exception:
+            pass
+
         headers = {
             "accept": "application/json",
             "Content-Type": "application/json",
             "X-Tenant-Id": self._tenant_id,
-            "X-Correlation-Id": self._tenant_id,
-            "X-Call-Id": self._tenant_id,
+            "X-Correlation-Id": trace_id,
+            "X-Call-Id": self._channel_id,
         }
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"

@@ -144,7 +144,7 @@ def build_modular_pipeline(
     tts = build_provider(session.providers[pipeline_cfg.tts], audio)
 
     llm_resolved = session.providers[pipeline_cfg.llm]
-    if llm_resolved.kind == "agentic_bus":
+    if llm_resolved.kind in ("agentic_bus", "asap_backend_agentic"):
         llm = build_provider(
             llm_resolved, audio,
             identity=session.identity,
