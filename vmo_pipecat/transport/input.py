@@ -63,6 +63,12 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
     def conn_id(self) -> Optional[str]:
         return self._conn_id
 
+    async def process_frame(self, frame, direction):
+        from ..observability.log_setup import get_logger
+        _log = get_logger(__name__)
+        _log.info("Transport process_frame called", frame_type=type(frame).__name__)
+        await super().process_frame(frame, direction)
+
     async def push_audio(self, audio_bytes: bytes) -> None:
         if not audio_bytes:
             return
