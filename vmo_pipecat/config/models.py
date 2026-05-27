@@ -141,6 +141,13 @@ class ElevenLabsConvProviderCfg(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
 
 
+class ASAPBackendAgenticProviderCfg(BaseModel):
+    kind: Literal["asap_backend_agentic"]
+    mode: Literal["llm"]
+    api_key: str = ""
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
 ProviderCfg = Annotated[
     Union[
         DeepgramProviderCfg,
@@ -151,6 +158,7 @@ ProviderCfg = Annotated[
         AgenticBusProviderCfg,
         DeepgramVoiceAgentProviderCfg,
         ElevenLabsConvProviderCfg,
+        ASAPBackendAgenticProviderCfg,
     ],
     Field(discriminator="kind"),
 ]

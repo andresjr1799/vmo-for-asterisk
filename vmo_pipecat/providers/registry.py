@@ -23,6 +23,7 @@ from .elevenlabs_stt import build_service as _build_elevenlabs_stt
 from .elevenlabs_fullagent import build_service as _build_elevenlabs_fullagent
 from .openai_llm import build_service as _build_openai
 from .agentic_bus_llm import build_service as _build_agentic_bus
+from .asap_backend_agentic_llm import build_service as _build_asap_backend
 
 
 def _build_deepgram(resolved: Any, audio_profile: "AudioProfileCfg") -> Any:
@@ -43,6 +44,7 @@ PROVIDER_BUILDERS: dict[str, Callable[..., Any]] = {
     "agentic_bus":          _build_agentic_bus,
     "deepgram_voice_agent": _build_deepgram_fullagent,
     "elevenlabs_conv":      _build_elevenlabs_fullagent,
+    "asap_backend_agentic": _build_asap_backend,
 }
 
 

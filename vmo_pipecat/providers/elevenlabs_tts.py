@@ -1,9 +1,4 @@
-"""Provider wrapper: ElevenLabs TTS — WebSocket (PipeCat 1.1.0+).
-
-Params soportados desde tenants.yaml:
-  voice_id, model_id, speed, stability, similarity_boost,
-  optimize_streaming_latency (solo HTTP, ignorado en WS)
-"""
+"""Provider wrapper: ElevenLabs TTS — WebSocket (PipeCat 1.1.0+)."""
 
 from __future__ import annotations
 
@@ -23,6 +18,21 @@ except ImportError:
         def link(self, n): pass
 
 
+class _PatchedElevenLabsTTSService(ElevenLabsTTSService):
+    """Sends voice_settings only on first context per WebSocket connection."""
+
+    async def run_tts(self, text, context_id):
+        try:
+            async for frame in super().run_tts(text, context_id):
+                yield frame
+        finally:
+            self._voice_settings = None
+
+    async def _connect(self):
+        self._voice_settings = self._set_voice_settings()
+        await super()._connect()
+
+
 def build_service(resolved: "ElevenLabsProviderCfg", audio_profile: "AudioProfileCfg") -> Any:
     params = dict(resolved.params)
     voice_id = params.pop("voice_id", "")
@@ -40,7 +50,7 @@ def build_service(resolved: "ElevenLabsProviderCfg", audio_profile: "AudioProfil
     if speed is not None:
         settings_kwargs["speed"] = float(speed)
 
-    return ElevenLabsTTSService(
+    return _PatchedElevenLabsTTSService(
         api_key=resolved.api_key,
         sample_rate=audio_profile.out_rate,
         reconnect_on_error=False,
