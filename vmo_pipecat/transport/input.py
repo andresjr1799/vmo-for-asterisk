@@ -79,14 +79,12 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
 
         self._push_audio_count = getattr(self, '_push_audio_count', 0) + 1
 
-        self._create_audio_task()
-
         frame = InputAudioRawFrame(
             audio=audio_bytes,
             sample_rate=self._in_sample_rate,
             num_channels=self._channels,
         )
-        await self.push_audio_frame(frame)
+        await self.push_frame(frame)
 
         if self._push_audio_count % 100 == 1:
             _log.debug(
