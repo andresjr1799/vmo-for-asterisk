@@ -75,6 +75,10 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
 
         if not self._started:
             self._early_frames.append(audio_bytes)
+            if len(self._early_frames) == 1:
+                from ..observability.log_setup import get_logger
+                _log = get_logger(__name__)
+                _log.info("Buffering early audio (pipeline not started yet)")
             return
 
         from ..observability.log_setup import get_logger
@@ -98,18 +102,21 @@ class AsteriskAudioSocketInputTransport(BaseInputTransport):
             )
 
     async def start(self, frame=None) -> None:
+        from ..observability.log_setup import get_logger
+        _log = get_logger(__name__)
+        _log.info("Transport input start called", early_frames=len(self._early_frames))
+
         self._resample_state = None
         await super().start(frame)
         await self.set_transport_ready(frame)
         self._started = True
 
         if self._early_frames:
-            from ..observability.log_setup import get_logger
-            _log = get_logger(__name__)
-            _log.debug("Flushing early audio frames", count=len(self._early_frames))
+            _log.info("Flushing early audio frames", count=len(self._early_frames))
             for audio_bytes in self._early_frames:
                 await self.push_audio(audio_bytes)
             self._early_frames.clear()
+        _log.info("Transport input start complete")
 
     async def stop(self, frame=None) -> None:
         self._conn_id = None
