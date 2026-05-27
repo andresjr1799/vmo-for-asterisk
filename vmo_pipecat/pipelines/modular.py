@@ -223,7 +223,11 @@ def build_modular_pipeline(
         logger.info("VAD: asterisk_talk_detect (via ARI ChannelTalking events)")
 
     elif vad_kind == "none":
-        logger.info("VAD: none (transcription-based turn detection)")
+        user_turn_strategies = UserTurnStrategies(
+            start=[TranscriptionUserTurnStartStrategy()],
+            stop=[SpeechTimeoutUserTurnStopStrategy()],
+        )
+        logger.info("VAD: none (turn-based, no interruptions)")
 
     if user_turn_strategies is None:
         user_turn_strategies = UserTurnStrategies()
