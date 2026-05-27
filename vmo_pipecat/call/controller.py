@@ -71,6 +71,9 @@ class CallController:
         self._started_at = time.monotonic()
         self._audio_channel_id: Optional[str] = None
 
+        self._pipeline_ready = False
+        self._early_audio: list[bytes] = []
+
         # Pipeline handles (set in start() if PipeCat is available)
         self._runner: Optional[Any] = None
         self._task: Optional[Any] = None
@@ -114,6 +117,15 @@ class CallController:
             self._runner = runner
             self._task = task
             self._echo_mode = False
+
+            @task.event_handler("on_pipeline_started")
+            async def _on_ready(_task, _frame):
+                self._pipeline_ready = True
+                if self._early_audio:
+                    logger.debug("Flushing early audio", count=len(self._early_audio))
+                    for buf in self._early_audio:
+                        await self._transport.push_audio(buf)
+                    self._early_audio.clear()
 
             await self._event_bus.emit(
                 "vmo.call.pipeline.started",
@@ -175,7 +187,11 @@ class CallController:
 
     async def on_audio(self, audio: bytes) -> None:
         self._audio_rx_count += 1
-        # Calcular energía RMS del frame para detectar voz vs silencio
+
+        if not self._pipeline_ready:
+            self._early_audio.append(audio)
+            return
+
         if self._audio_rx_count % 50 == 0:
             try:
                 import struct
