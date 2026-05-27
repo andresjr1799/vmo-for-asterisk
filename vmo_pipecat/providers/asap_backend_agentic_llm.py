@@ -124,6 +124,8 @@ class ASAPBackendAgenticLLM(FrameProcessor):
             "accept": "application/json",
             "Content-Type": "application/json",
             "X-Tenant-Id": self._tenant_id,
+            "X-Correlation-Id": self._tenant_id,
+            "X-Call-Id": self._tenant_id,
         }
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
