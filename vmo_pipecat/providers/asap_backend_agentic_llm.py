@@ -1,9 +1,5 @@
-"""
-ASAP Backend Agentic LLM — REST SSE streaming LLM provider.
+"""ASAP Backend Agentic LLM — REST SSE streaming LLM provider."""
 
-Delegates each turn to an external agentic backend via HTTP POST + SSE.
-Receives ``delta`` events and emits TextFrame(s) downstream to TTS.
-"""
 from __future__ import annotations
 
 import json
@@ -22,7 +18,7 @@ except ImportError:
 try:
     from pipecat.frames.frames import (
         TextFrame,
-        LLMMessagesFrame,
+        LLMContextFrame,
         LLMFullResponseStartFrame,
         LLMFullResponseEndFrame,
     )
@@ -32,13 +28,13 @@ except ImportError:
     _PIPECAT = False
 
     class FrameProcessor:
-        def __init__(self, **kw): self._functions = {}
+        def __init__(self, **kw): pass
 
     class TextFrame:
         def __init__(self, text): self.text = text
 
-    class LLMMessagesFrame:
-        pass
+    class LLMContextFrame:
+        def __init__(self, context=None): self.context = context
 
     class LLMFullResponseStartFrame:
         pass
@@ -70,7 +66,6 @@ def build_service(resolved: Any, audio_profile: "AudioProfileCfg", **kwargs: Any
 
 
 class ASAPBackendAgenticLLM(FrameProcessor):
-    """LLM service that streams from a REST SSE backend."""
 
     def __init__(
         self, *, url: str = "", api_key: str = "", timeout: int = 45,
@@ -88,15 +83,17 @@ class ASAPBackendAgenticLLM(FrameProcessor):
 
     async def process_frame(self, frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
-        if isinstance(frame, LLMMessagesFrame):
-            await self._handle_llm_messages(frame)
+
+        if isinstance(frame, LLMContextFrame):
+            await self._handle_llm_context(frame)
         else:
             await self.push_frame(frame, direction)
 
-    async def _handle_llm_messages(self, frame: LLMMessagesFrame) -> None:
-        user_input = self._extract_user_input(frame.messages)
+    async def _handle_llm_context(self, frame: LLMContextFrame) -> None:
+        messages = getattr(frame.context, "messages", []) if frame.context else []
+        user_input = self._extract_user_input(messages)
         if not user_input:
-            logger.warning("ASAP LLM: no user input in LLMMessagesFrame, skipping")
+            logger.warning("ASAP LLM: no user input, skipping")
             return
 
         await self.push_frame(LLMFullResponseStartFrame())
