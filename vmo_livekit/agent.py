@@ -1,0 +1,73 @@
+"""VoicePipelineAgent — LiveKit-native voice AI pipeline.
+
+STT → LLM → TTS with built-in VAD and interruption handling.
+No custom transport, metrics processors, or lifecycle management needed.
+"""
+
+from livekit.agents import (
+    JobContext,
+    WorkerOptions,
+    cli,
+    llm,
+)
+from livekit.agents.pipeline import VoicePipelineAgent
+
+from .config import SYSTEM_PROMPT, GREETING, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
+from .providers import create_stt, create_llm, create_tts
+from .sip_handler import SessionContext
+from .metrics import get_tracer, get_logger, _calls_total, _calls_active
+
+logger = get_logger(__name__)
+
+
+async def entrypoint(ctx: JobContext):
+    """LiveKit worker entrypoint — one per SIP/WebRTC call."""
+    logger.info("VMO job received", room=ctx.room.name)
+
+    participant = ctx.room.local_participant
+
+    # Extract SIP headers from participant attributes
+    headers = participant.attributes if hasattr(participant, "attributes") else {}
+    session = SessionContext.from_sip_headers(headers)
+
+    logger.info("Session started", **session.asdict())
+
+    if _calls_total:
+        _calls_total.add(1, {"tenant_id": session.tenant_id})
+    if _calls_active:
+        _calls_active.add(1, {"tenant_id": session.tenant_id})
+
+    tracer = get_tracer()
+
+    with tracer.start_as_current_span("vmo.call") as span:
+        span.set_attributes(session.asdict())
+
+        agent = VoicePipelineAgent(
+            vad=ctx.agent.speech_processor if hasattr(ctx, "agent") else None,
+            stt=create_stt(),
+            llm=create_llm(),
+            tts=create_tts(),
+            chat_ctx=llm.ChatContext().append(role="system", text=SYSTEM_PROMPT),
+        )
+
+        await agent.start(
+            room=ctx.room,
+            participant=participant,
+        )
+
+        await agent.say(GREETING, allow_interruptions=True)
+
+    if _calls_active:
+        _calls_active.add(-1, {"tenant_id": session.tenant_id})
+    logger.info("VMO session ended", vmo_call_id=session.vmo_call_id)
+
+
+def create_worker() -> WorkerOptions:
+    """Create LiveKit worker options."""
+    return WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        agent_name="vmo-livekit",
+        ws_url=LIVEKIT_URL,
+        api_key=LIVEKIT_API_KEY,
+        api_secret=LIVEKIT_API_SECRET,
+    )

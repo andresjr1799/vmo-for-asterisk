@@ -1,0 +1,74 @@
+name: vmo-livekit
+
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: livekit
+    restart: unless-stopped
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+    environment:
+      LIVEKIT_KEYS: "devkey: secret"
+      LIVEKIT_PORT: "7880"
+      LIVEKIT_UI_PORT: "7881"
+      LIVEKIT_SIP_PORT: "5060"
+    command: --config /etc/livekit.yaml --node-ip=livekit
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    networks: [vmo_livekit_net]
+
+  vmo_agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.livekit
+    container_name: vmo_agent
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      LIVEKIT_URL: "ws://livekit:7880"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel_collector:4317"
+      PYTHONPATH: /app
+    networks: [vmo_livekit_net]
+    depends_on:
+      - livekit
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"
+    networks: [vmo_livekit_net]
+
+  otel_collector:
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    container_name: otel_collector
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317/tcp"
+      - "4318:4318/tcp"
+    networks: [vmo_livekit_net]
+    depends_on:
+      - jaeger
+
+  fluent_bit:
+    image: fluent/fluent-bit:3.2
+    container_name: fluent_bit
+    restart: unless-stopped
+    command: ["-c", "/fluent-bit/etc/fluent-bit.conf"]
+    volumes:
+      - ./fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    networks: [vmo_livekit_net]
+
+networks:
+  vmo_livekit_net:
+    driver: bridge
