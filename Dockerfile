@@ -11,6 +11,8 @@ RUN pip install --no-cache-dir \
     livekit-plugins-deepgram \
     livekit-plugins-elevenlabs \
     livekit-plugins-openai \
+    livekit-plugins-sip \
+    aiohttp \
     opentelemetry-api opentelemetry-sdk \
     opentelemetry-exporter-otlp-proto-grpc \
     structlog

@@ -57,18 +57,6 @@ services:
     depends_on:
       - jaeger
 
-  fluent_bit:
-    image: fluent/fluent-bit:3.2
-    container_name: fluent_bit
-    restart: unless-stopped
-    command: ["-c", "/fluent-bit/etc/fluent-bit.conf"]
-    volumes:
-      - ./fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
-    ports:
-      - "24224:24224"
-      - "24224:24224/udp"
-    networks: [vmo_livekit_net]
-
 networks:
   vmo_livekit_net:
     driver: bridge

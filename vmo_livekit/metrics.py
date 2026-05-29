@@ -11,13 +11,10 @@ import structlog
 from opentelemetry import trace, metrics
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.sdk._logs import LoggerProvider, LogRecord
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 
 from .config import OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME, LOG_LEVEL
@@ -40,7 +37,7 @@ def init_otel() -> None:
     global _tracer, _meter, _stt_latency, _llm_ttfb, _tts_first_audio
     global _turn_response, _calls_total, _calls_active
 
-    resource = Resource.create({"service.name": OTEL_SERVICE_NAME})
+    resource = Resource(attributes={"service.name": OTEL_SERVICE_NAME})
 
     # Traces
     tracer_provider = TracerProvider(resource=resource)

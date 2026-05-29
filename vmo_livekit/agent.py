@@ -5,6 +5,7 @@ No custom transport, metrics processors, or lifecycle management needed.
 """
 
 from livekit.agents import (
+    AutoSubscribe,
     JobContext,
     WorkerOptions,
     cli,
@@ -24,10 +25,14 @@ async def entrypoint(ctx: JobContext):
     """LiveKit worker entrypoint — one per SIP/WebRTC call."""
     logger.info("VMO job received", room=ctx.room.name)
 
-    participant = ctx.room.local_participant
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-    # Extract SIP headers from participant attributes
-    headers = participant.attributes if hasattr(participant, "attributes") else {}
+    participant = await ctx.wait_for_participant()
+    if participant is None:
+        logger.error("No participant joined")
+        return
+
+    headers = participant.attributes or {}
     session = SessionContext.from_sip_headers(headers)
 
     logger.info("Session started", **session.asdict())
@@ -43,19 +48,19 @@ async def entrypoint(ctx: JobContext):
         span.set_attributes(session.asdict())
 
         agent = VoicePipelineAgent(
-            vad=ctx.agent.speech_processor if hasattr(ctx, "agent") else None,
+            vad=None,
             stt=create_stt(),
             llm=create_llm(),
             tts=create_tts(),
-            chat_ctx=llm.ChatContext().append(role="system", text=SYSTEM_PROMPT),
+            chat_ctx=llm.ChatContext().append(
+                role="system",
+                text=SYSTEM_PROMPT,
+            ),
         )
 
-        await agent.start(
-            room=ctx.room,
-            participant=participant,
-        )
+        agent.start(room=ctx.room)
 
-        await agent.say(GREETING, allow_interruptions=True)
+        await agent.say(GREETING, allow_interruptions=False)
 
     if _calls_active:
         _calls_active.add(-1, {"tenant_id": session.tenant_id})

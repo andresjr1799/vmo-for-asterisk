@@ -1,7 +1,6 @@
 """Provider factory — creates LiveKit-compatible STT, LLM, TTS services.
 
 LiveKit Agents expects services implementing their protocol interfaces.
-We wrap pipecat-style providers.
 """
 
 from livekit.agents import stt, llm, tts
@@ -9,8 +8,9 @@ from livekit.plugins import deepgram, elevenlabs, openai
 
 from .config import (
     STT_API_KEY, STT_MODEL, STT_LANGUAGE,
-    LLM_API_KEY, LLM_MODEL, LLM_TEMPERATURE,
+    LLM_PROVIDER, LLM_API_KEY, LLM_MODEL, LLM_TEMPERATURE,
     TTS_API_KEY, TTS_VOICE_ID, TTS_MODEL,
+    ASAP_BACKEND_URL, ASAP_BACKEND_TIMEOUT,
 )
 
 
@@ -26,7 +26,15 @@ def create_stt() -> stt.STT:
 
 
 def create_llm() -> llm.LLM:
-    """OpenAI LLM — GPT-4o-mini, Spanish."""
+    """LLM provider — OpenAI or ASAP backend."""
+    if LLM_PROVIDER == "asap_backend" and ASAP_BACKEND_URL:
+        from livekit.agents.llm import LLM
+        from .asap_llm import ASAPBackendLLM
+        return ASAPBackendLLM(
+            base_url=ASAP_BACKEND_URL,
+            timeout=ASAP_BACKEND_TIMEOUT,
+        )
+
     return openai.LLM(
         api_key=LLM_API_KEY,
         model=LLM_MODEL,
