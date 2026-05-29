@@ -23,7 +23,7 @@ services:
   vmo_agent:
     build:
       context: .
-      dockerfile: Dockerfile.livekit
+      dockerfile: Dockerfile
     container_name: vmo_agent
     restart: unless-stopped
     env_file: .env
